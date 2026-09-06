@@ -1,40 +1,51 @@
 /* 명지 스마트 분실물 센터 -- 전역 스타일
  *
- * 방향: "캠퍼스 게시판".
- *   - 배경은 흰색 대신 살짝 따뜻한 종이색. 오래 봐도 눈이 덜 피로하고,
- *     흰 카드를 얹었을 때 카드가 저절로 떠 보인다(그림자를 안 써도 된다).
+ * 방향: 명지대학교 아이덴티티를 입힌 "캠퍼스 게시판".
+ *   - 상징색은 명지대 블루(#0b4da2). 학교 문서·표지판에서 보던 남색 계열이라
+ *     교내 서비스라는 인상이 바로 온다. 이 색 하나만 포인트로 쓰고 나머지는 무채색.
+ *   - 배경은 아주 옅은 청회색. 순백보다 눈이 편하고, 흰 카드를 얹으면 저절로 떠 보인다.
  *   - 구조는 그림자가 아니라 '선'으로 만든다. 실제 게시판처럼 정보 밀도를 높인다.
- *   - 포인트 색은 딥그린 하나. 나머지는 전부 잉크색 계열.
  *   - 모서리는 4px로 거의 각지게. 둥글수록 앱 같고, 각질수록 문서 같다.
+ *   - 본문은 Pretendard. 한글 가독성이 좋고 숫자·영문이 함께 있어도 흐트러지지 않는다.
+ *
+ * 학교 공식 엠블럼(CI)은 쓰지 않는다. 학교 자산이라 임의로 사용할 수 없어서,
+ * 로고는 상징색을 쓴 자체 마크로 대신한다(FE/components/LogoMark.jsx).
  */
 
+/* 동적 서브셋 버전 -- 화면에 실제로 쓰인 글자만 내려받아 한글 웹폰트치고 가볍다. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css");
+
 :root {
+  /* 명지대 상징색 */
+  --brand: #0b4da2;
+  --brand-deep: #08356f;
+
   /* 종이 */
-  --paper: #faf8f4;
+  --paper: #f4f6fa;
   --surface: #ffffff;
-  --surface-2: #f2efe8;
+  --surface-2: #eef1f7;
 
   /* 잉크 */
-  --ink: #1a1a18;
-  --ink-2: #56534c;
-  --ink-3: #8b857a;
+  --ink: #14181f;
+  --ink-2: #515a68;
+  --ink-3: #838d9c;
 
   /* 선 */
-  --rule: #e4dfd5;
-  --rule-strong: #cec7b8;
+  --rule: #dfe4ed;
+  --rule-strong: #c3cbd9;
 
-  /* 포인트 */
-  --accent: #16653f;
-  --accent-hover: #0f4e30;
-  --accent-soft: #e7efe9;
+  /* 포인트 = 상징색 */
+  --accent: var(--brand);
+  --accent-hover: var(--brand-deep);
+  --accent-soft: #e6eef8;
 
   /* 상태 */
-  --open: #8a5a00;        /* 찾는 중 / 보관 중 */
-  --open-soft: #f8f0dd;
+  --open: #9a5b00;        /* 찾는 중 / 보관 중 */
+  --open-soft: #fbf1de;
   --done: #16653f;        /* 찾음 / 완료 */
-  --done-soft: #e7efe9;
-  --danger: #a8322a;
-  --danger-soft: #f9eae8;
+  --done-soft: #e5f1ea;
+  --danger: #b02f28;
+  --danger-soft: #fbeae8;
 
   --radius: 4px;
   --radius-lg: 6px;
@@ -44,27 +55,31 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #141412;
-    --surface: #1c1c19;
-    --surface-2: #26251f;
+    /* 어두운 배경에서 #0b4da2 는 거의 검게 보인다. 같은 계열의 밝은 파랑으로 올린다. */
+    --brand: #5b9bf0;
+    --brand-deep: #86b7f6;
 
-    --ink: #ece8df;
-    --ink-2: #a8a297;
-    --ink-3: #7c766b;
+    --paper: #10141a;
+    --surface: #181d25;
+    --surface-2: #222833;
 
-    --rule: #302e28;
-    --rule-strong: #45423a;
+    --ink: #e6eaf1;
+    --ink-2: #a2acbb;
+    --ink-3: #78838f;
 
-    --accent: #6cc39a;
-    --accent-hover: #8ed4b3;
-    --accent-soft: #17271f;
+    --rule: #2a303b;
+    --rule-strong: #3c4451;
 
-    --open: #d9a441;
-    --open-soft: #2a2114;
+    --accent: var(--brand);
+    --accent-hover: var(--brand-deep);
+    --accent-soft: #16243a;
+
+    --open: #dda94a;
+    --open-soft: #2b2314;
     --done: #6cc39a;
-    --done-soft: #17271f;
-    --danger: #e08379;
-    --danger-soft: #2c1a18;
+    --done-soft: #16281f;
+    --danger: #e2867d;
+    --danger-soft: #2d1b19;
 
     color-scheme: dark;
   }
@@ -76,8 +91,8 @@ body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-family: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
@@ -94,8 +109,16 @@ img { max-width: 100%; }
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--paper);
+  background: var(--surface);
   border-bottom: 1px solid var(--rule);
+}
+
+/* 머리 위 얇은 상징색 띠 -- 학교 인쇄물의 머리띠에서 가져온 인상. */
+.topbar::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: var(--brand);
 }
 
 .topbar-inner {
@@ -113,14 +136,26 @@ img { max-width: 100%; }
 }
 
 .logo {
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.03em;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   cursor: pointer;
   color: var(--ink);
   white-space: nowrap;
+  line-height: 1.15;
 }
-.logo span { color: var(--accent); }
+.logo-text { display: flex; flex-direction: column; }
+.logo-univ {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--brand);
+}
+.logo-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
 
 /* 상단 메뉴 -- 밑줄로 현재 위치를 표시한다(버튼 배경 대신). */
 .nav {
@@ -183,11 +218,14 @@ img { max-width: 100%; }
 
 .footer {
   border-top: 1px solid var(--rule);
-  padding: 22px 24px;
+  background: var(--surface);
+  padding: 24px;
   text-align: center;
   color: var(--ink-3);
   font-size: 12.5px;
 }
+.footer strong { color: var(--ink-2); font-weight: 700; }
+.footer-line { margin: 0 0 4px; }
 
 /* ------------------------------------------------------------ 목록(행) */
 /*
@@ -735,3 +773,29 @@ button.sm { padding: 5px 11px; font-size: 13px; }
 @media (prefers-color-scheme: dark) {
   .campus-tabs button.active { color: #10221a; }
 }
+
+/* ------------------------------------------------------------ 학교 아이덴티티 */
+
+/* 제목 위에 얹는 작은 소속 표기 -- 학교 문서의 머리말 같은 인상. */
+.eyebrow {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--brand);
+}
+
+/* 로그인 화면은 서비스의 첫인상이라 로고를 크게 세운다. */
+.login-head {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.login-head svg { margin-bottom: 12px; }
+.login-univ {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+}
+.login-head h1 { margin-bottom: 8px; }

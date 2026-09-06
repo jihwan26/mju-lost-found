@@ -1,5 +1,6 @@
 import { navigate } from '../navigation.js';
 import TrustScore from './TrustScore.jsx';
+import LogoMark from './LogoMark.jsx';
 
 /**
  * 상단 헤더 -- 로고 줄 + 메뉴 줄 2단.
@@ -26,7 +27,11 @@ export default function TopBar({ me, path, onLogout }) {
       <div className="topbar-inner">
         <div className="topbar-top">
           <div className="logo" onClick={() => navigate('/')}>
-            명지 <span>분실물</span>
+            <LogoMark />
+            <span className="logo-text">
+              <span className="logo-univ">명지대학교</span>
+              <span className="logo-name">분실물 센터</span>
+            </span>
           </div>
           <div className="topbar-user">
             <button className="ghost sm" onClick={() => navigate('/me')} title={me.user.email}>

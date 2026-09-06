@@ -28,7 +28,8 @@ export default function HomeScreen({ me }) {
   return (
     <>
       <div className="page-head">
-        <h1>명지대학교 분실물 센터</h1>
+        <p className="eyebrow">명지대학교</p>
+        <h1>스마트 분실물 센터</h1>
         <p>
           교내에서 잃어버리거나 주운 물건을 등록하면, AI가 제목·설명·카테고리·장소를
           분석해 서로 관련 있는 글을 찾아줍니다.

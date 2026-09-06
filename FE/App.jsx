@@ -76,7 +76,9 @@ export default function App() {
         <Routes path={path} me={me} refreshMe={refreshMe} />
       </main>
       <footer className="footer">
-        명지 스마트 분실물 센터 · 바이브코딩 경진대회 출품작
+        <p className="footer-line"><strong>명지대학교 스마트 분실물 센터</strong></p>
+        <p className="footer-line">교내 구성원(@mju.ac.kr)만 이용할 수 있습니다</p>
+        <p className="footer-line">바이브코딩 경진대회 출품작</p>
       </footer>
     </div>
   );
