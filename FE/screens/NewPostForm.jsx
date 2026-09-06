@@ -13,7 +13,8 @@ export default function NewPostForm({ kind, me, onCreated }) {
   const meta = BOARD_META[kind];
   const [form, setForm] = useState({
     title: '', description: '', category: me.categories[0], location: '',
-    date: todayISO(), time: nowHM(),
+    // 내가 주로 쓰는 캠퍼스를 기본값으로 -- 대부분 자기 캠퍼스에만 글을 쓴다.
+    campus: me.user.campus, date: todayISO(), time: nowHM(),
   });
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
@@ -33,6 +34,7 @@ export default function NewPostForm({ kind, me, onCreated }) {
       fd.append('location', form.location);
       // 서버의 날짜 검증 형식("YYYY-MM-DD HH:MM")에 맞춰 두 입력을 합친다.
       fd.append('at', `${form.date} ${form.time}`);
+      fd.append('campus', form.campus);
       // 서버가 upload.array('images') 로 받으므로 같은 이름으로 여러 번 붙인다.
       for (const f of files) fd.append('images', f);
       const { id } = await sendForm(`/api/posts/${kind}`, 'POST', fd);
@@ -61,15 +63,33 @@ export default function NewPostForm({ kind, me, onCreated }) {
       </div>
       <div className="row">
         <div className="field">
+          <label>캠퍼스 *</label>
+          <select value={form.campus} onChange={set('campus')}>
+            {me.campuses.map((c) => <option key={c.key} value={c.key}>{c.label} ({c.city})</option>)}
+          </select>
+        </div>
+        <div className="field">
           <label>카테고리 *</label>
           <select value={form.category} onChange={set('category')}>
             {me.categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        <div className="field">
-          <label>{meta.dateLabel} 장소 *</label>
-          <input type="text" value={form.location} onChange={set('location')} placeholder="예: 인문캠퍼스 도서관" required />
-        </div>
+      </div>
+      <div className="field">
+        <label>{meta.dateLabel} 장소 *</label>
+        {/* 건물 목록은 자동완성으로만 제안하고, 목록에 없는 곳도 그대로 쓸 수 있게 자유 입력. */}
+        <input
+          type="text"
+          value={form.location}
+          onChange={set('location')}
+          placeholder="건물 이름을 입력하거나 목록에서 고르세요"
+          list="campus-buildings"
+          required
+        />
+        <datalist id="campus-buildings">
+          {(me.campuses.find((c) => c.key === form.campus)?.buildings ?? [])
+            .map((b) => <option key={b} value={b} />)}
+        </datalist>
       </div>
       <div className="row">
         <div className="field">

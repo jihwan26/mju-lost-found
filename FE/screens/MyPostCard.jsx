@@ -18,7 +18,8 @@ export default function MyPostCard({ kind, post: p, me, onChanged }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
-    title: p.title, description: p.description, category: p.category, location: p.location,
+    title: p.title, description: p.description, category: p.category,
+    location: p.location, campus: p.campus,
   });
   const [files, setFiles] = useState([]);
 
@@ -47,6 +48,7 @@ export default function MyPostCard({ kind, post: p, me, onChanged }) {
       fd.append('description', form.description);
       fd.append('category', form.category);
       fd.append('location', form.location);
+      fd.append('campus', form.campus);
       // 파일을 고르지 않았으면 아무것도 보내지 않는다 -> 서버가 기존 사진을 유지한다.
       for (const f of files) fd.append('images', f);
       await sendForm(`/api/posts/${kind}/${p.id}`, 'PATCH', fd);
@@ -60,7 +62,11 @@ export default function MyPostCard({ kind, post: p, me, onChanged }) {
         <Thumb src={p.image_url} />
         <div className="card-body">
           <p className="card-title">{p.title} <StatusPill status={p.status} /></p>
-          <p className="meta">{p.category} · {p.location} · {p[meta.dateField]}</p>
+          <p className="meta">
+            <span className="tag">{me.campuses.find((c) => c.key === p.campus)?.label ?? p.campus}</span>
+            <span className="sep">·</span>{p.category}<span className="sep">·</span>{p.location}
+            <span className="sep">·</span>{p[meta.dateField]}
+          </p>
           <p className="faint">작성일 {p.created_at}<span className="sep">·</span>조회 {p.view_count ?? 0}</p>
         </div>
         <div className="card-actions">
@@ -103,6 +109,14 @@ export default function MyPostCard({ kind, post: p, me, onChanged }) {
                 {me.categories.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
+            <div className="field">
+              <label>캠퍼스 *</label>
+              <select value={form.campus} onChange={(e) => setForm({ ...form, campus: e.target.value })}>
+                {me.campuses.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="row">
             <div className="field">
               <label>장소 *</label>
               <input type="text" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} required />

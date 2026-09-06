@@ -709,3 +709,29 @@ button.sm { padding: 5px 11px; font-size: 13px; }
   .msg { max-width: 88%; }
   .spec { grid-template-columns: 74px 1fr; }
 }
+
+/* ------------------------------------------------------------ 캠퍼스 탭 */
+
+/* 게시판 전체에 걸리는 필터라 검색 폼 밖에 따로 둔다. */
+.campus-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.campus-tabs button {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.campus-tabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  .campus-tabs button.active { color: #10221a; }
+}

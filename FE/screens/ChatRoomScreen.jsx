@@ -97,10 +97,32 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
     return () => { alive = false; };
   }, [roomId, refresh, onCountsChanged, applyMessages]);
 
-  // 상대방 메시지를 받아보려면 주기적으로 다시 물어봐야 한다.
-  // (WebSocket 없이 5초 폴링 -- 원본 Streamlit 도 새로고침에 의존했다.)
+  /**
+   * 실시간 수신 (SSE).
+   *
+   * 서버가 새 메시지·반응·읽음을 밀어주면 즉시 다시 불러온다. 이벤트 자체에
+   * 메시지 내용을 담지 않고 "이 방에 뭔가 생겼다"만 알리는 이유는, 권한 검사와
+   * 숨김 처리를 이미 하고 있는 기존 조회 경로를 그대로 쓰기 위해서다.
+   *
+   * 폴링도 없애지 않고 20초로 늘려 남겨 둔다 -- 스트림이 끊긴 동안에도
+   * 결국 따라잡히게 하는 안전망이다.
+   */
   useEffect(() => {
-    const timer = setInterval(refresh, 5000);
+    const source = new EventSource('/api/stream');
+    const onEvent = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (Number(data.chatRoomId) === Number(roomId)) refresh();
+      } catch { /* 형식이 이상한 이벤트는 무시 */ }
+    };
+    source.addEventListener('message', onEvent);
+    source.addEventListener('reaction', onEvent);
+    source.addEventListener('read', onEvent);
+    return () => source.close();
+  }, [roomId, refresh]);
+
+  useEffect(() => {
+    const timer = setInterval(refresh, 20000);
     return () => clearInterval(timer);
   }, [refresh]);
 

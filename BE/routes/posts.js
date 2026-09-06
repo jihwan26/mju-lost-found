@@ -31,7 +31,8 @@ async function notifyMatchingLosers(foundPostId) {
   if (!foundPost) return;
 
   // 아직 찾는 중인 분실 글만 후보로 본다. 이미 찾은 사람에게는 알릴 이유가 없다.
-  const openLostPosts = db.searchPosts('lost', { status: '찾는 중' })
+  // 캠퍼스가 다르면 알릴 이유가 없다(서울에서 주운 물건이 용인에서 잃어버린 것일 리 없다).
+  const openLostPosts = db.searchPosts('lost', { status: '찾는 중', campus: foundPost.campus })
     .filter((p) => p.user_id !== foundPost.user_id);
   if (!openLostPosts.length) return;
 
@@ -50,6 +51,7 @@ router.get('/posts/:kind', wrap(async (req, res) => {
     keyword: String(req.query.keyword || '').trim(),
     category: filterValue(req.query.category),
     status: filterValue(req.query.status),
+    campus: filterValue(req.query.campus),
   }));
 }));
 
@@ -82,7 +84,7 @@ router.post('/posts/:kind', upload.array('images', db.MAX_POST_IMAGES), wrap(asy
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
 
-  const { title, description, category, location, at } = req.body;
+  const { title, description, category, location, at, campus } = req.body;
   // 원본 폼의 "* 필수" 검사와 같은 항목들.
   const errors = [];
   if (!String(title || '').trim()) errors.push('제목을 입력해주세요.');
@@ -98,6 +100,9 @@ router.post('/posts/:kind', upload.array('images', db.MAX_POST_IMAGES), wrap(asy
     category,
     location: location.trim(),
     at,
+    // 캠퍼스를 안 보내면 글쓴이가 주로 쓰는 캠퍼스로 본다. 대부분 자기 캠퍼스에만
+    // 글을 쓰기도 하고, 이 값을 안 보내던 시절의 클라이언트도 그대로 동작한다.
+    campus: campus || user.campus,
     imageUrls: imageUrlsFor(req.files),
   });
 
@@ -127,6 +132,7 @@ router.patch('/posts/:kind/:id', upload.array('images', db.MAX_POST_IMAGES), wra
     if (!db.CATEGORIES.includes(req.body.category)) throw new db.ValidationError('카테고리를 선택해주세요.');
     fields.category = req.body.category;
   }
+  if (req.body.campus !== undefined) fields.campus = req.body.campus;
   // 사진을 새로 올렸을 때만 통째로 교체한다 (안 올리면 기존 사진 유지 -- 원본과 동일).
   const newImages = imageUrlsFor(req.files);
   if (newImages.length) {

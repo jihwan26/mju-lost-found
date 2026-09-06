@@ -14,6 +14,8 @@
  * 넣고, 권한/정지/관리자 여부는 매 요청마다 DB에서 다시 읽는다.
  */
 import * as db from './db.js';
+import { campusOptions } from './campus.js';
+import { isVisionConfigured } from './vision.js';
 
 export const ALLOWED_EMAIL_DOMAIN = '@mju.ac.kr';
 
@@ -187,6 +189,8 @@ export function buildMeResponse(req) {
     },
     maxPostImages: db.MAX_POST_IMAGES,
     reactions: db.ALLOWED_REACTIONS,
+    campuses: campusOptions(),
+    imageSearchEnabled: isVisionConfigured(),
   };
   if (!user) return { ...base, loggedIn: false, user: null };
 
@@ -212,6 +216,7 @@ export function buildMeResponse(req) {
       isAdmin: Boolean(user.is_admin),
       isSuspended: db.isUserSuspended(user.id),
       trustScore: user.trust_score,
+      campus: user.campus,
       // 지금 닉네임을 바꿀 수 있는지 + 못 바꾸면 며칠 남았는지
       nicknameChange: user.nickname ? db.nicknameChangeStatus(user.id) : { canChange: false, daysLeft: 0 },
     },

@@ -99,6 +99,8 @@ export default function PostDetailScreen({ kind, id, me }) {
             <span className="sep">·</span>
             <TrustScore score={postData.author_trust_score} />
           </dd>
+          <dt>캠퍼스</dt>
+          <dd>{me.campuses.find((c) => c.key === postData.campus)?.label ?? postData.campus}</dd>
           <dt>카테고리</dt><dd>{postData.category}</dd>
           <dt>장소</dt><dd>{postData.location}</dd>
           <dt>{meta.dateLabel} 시간</dt><dd>{postData[meta.dateField]}</dd>

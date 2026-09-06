@@ -98,4 +98,12 @@ router.patch('/me/nickname', wrap(async (req, res) => {
   res.json(auth.buildMeResponse(req));
 }));
 
+/** 주로 쓰는 캠퍼스 변경. 게시판 탭·등록 폼의 기본값으로만 쓰인다. */
+router.patch('/me/campus', wrap(async (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  db.setUserCampus(user.id, req.body?.campus);
+  res.json(auth.buildMeResponse(req));
+}));
+
 export default router;

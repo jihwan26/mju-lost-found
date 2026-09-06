@@ -15,6 +15,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_CAMPUS, isValidCampus } from './campus.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
@@ -92,6 +94,8 @@ CREATE TABLE IF NOT EXISTS User (
     suspended_until TEXT,
     -- 명지도(신뢰도). 모두 50에서 시작해 0~100 사이에서만 움직인다.
     trust_score REAL NOT NULL DEFAULT 50.0,
+    -- 주로 쓰는 캠퍼스. 등록 폼/게시판 탭의 기본값으로만 쓰이고, 권한과는 무관하다.
+    campus TEXT NOT NULL DEFAULT 'humanities' CHECK (campus IN ('humanities', 'natural')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -104,6 +108,9 @@ CREATE TABLE IF NOT EXISTS LostPost (
     location TEXT NOT NULL,
     lost_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT '찾는 중' CHECK (status IN ('찾는 중', '찾음')),
+    -- 인문(서울) / 자연(용인). 두 캠퍼스는 멀리 떨어져 있어 게시글이 서로 섞이면
+    -- 오히려 방해가 되므로, 조회·검색·매칭이 모두 이 값으로 갈린다.
+    campus TEXT NOT NULL DEFAULT 'humanities' CHECK (campus IN ('humanities', 'natural')),
     -- 대표 이미지 1장. image_urls 의 첫 번째와 같은 값을 넣어 두어, 사진 여러 장을
     -- 지원하기 전에 쓰던 코드/데이터가 그대로 동작하게 한다.
     image_url TEXT,
@@ -123,6 +130,9 @@ CREATE TABLE IF NOT EXISTS FoundPost (
     location TEXT NOT NULL,
     found_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT '보관 중' CHECK (status IN ('보관 중', '완료')),
+    -- 인문(서울) / 자연(용인). 두 캠퍼스는 멀리 떨어져 있어 게시글이 서로 섞이면
+    -- 오히려 방해가 되므로, 조회·검색·매칭이 모두 이 값으로 갈린다.
+    campus TEXT NOT NULL DEFAULT 'humanities' CHECK (campus IN ('humanities', 'natural')),
     -- 대표 이미지 1장. image_urls 의 첫 번째와 같은 값을 넣어 두어, 사진 여러 장을
     -- 지원하기 전에 쓰던 코드/데이터가 그대로 동작하게 한다.
     image_url TEXT,
@@ -254,6 +264,10 @@ CREATE INDEX IF NOT EXISTS idx_postview_post ON PostView(post_kind, post_id);
 CREATE INDEX IF NOT EXISTS idx_comment_post ON Comment(post_kind, post_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_reaction_message ON MessageReaction(message_id);
 CREATE INDEX IF NOT EXISTS idx_lostpost_user_id ON LostPost(user_id);
+-- campus 인덱스는 여기 두면 안 된다. 이미 만들어진 DB에서는 위의 CREATE TABLE 이
+-- 아무 일도 하지 않으므로(IF NOT EXISTS) campus 컬럼이 아직 없고, 인덱스 생성이
+-- "no such column: campus" 로 실패해 서버가 아예 못 뜬다.
+-- 컬럼을 붙이는 runMigrations() 안에서 만든다.
 CREATE INDEX IF NOT EXISTS idx_foundpost_user_id ON FoundPost(user_id);
 CREATE INDEX IF NOT EXISTS idx_match_lost_post_id ON "Match"(lost_post_id);
 CREATE INDEX IF NOT EXISTS idx_match_found_post_id ON "Match"(found_post_id);
@@ -294,7 +308,18 @@ function runMigrations() {
   for (const table of ['LostPost', 'FoundPost']) {
     addColumn(table, 'image_urls', 'TEXT');
     addColumn(table, 'view_count', 'INTEGER NOT NULL DEFAULT 0');
+    // 기존 글은 전부 인문캠퍼스로 본다. 캠퍼스가 없던 시절의 글이라 달리 알 방법이
+    // 없고, 작성자가 '내 게시물'에서 언제든 옮길 수 있다.
+    addColumn(table, 'campus', "TEXT NOT NULL DEFAULT 'humanities'");
   }
+  // 사용자가 주로 쓰는 캠퍼스. 등록 폼과 게시판 탭의 기본값으로만 쓰인다.
+  addColumn('User', 'campus', "TEXT NOT NULL DEFAULT 'humanities'");
+
+  // campus 컬럼이 확실히 생긴 뒤에 인덱스를 만든다(스키마 쪽에 두면 옛 DB에서 실패한다).
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_lostpost_campus ON LostPost(campus, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_foundpost_campus ON FoundPost(campus, created_at DESC);
+  `);
 
   addColumn('"Match"', 'lost_confirmed_at', 'TEXT');
   addColumn('"Match"', 'found_confirmed_at', 'TEXT');
@@ -435,6 +460,12 @@ export function setInitialNickname(userId, nicknameRaw) {
   }
 }
 
+/** 사용자가 주로 쓰는 캠퍼스를 바꾼다. 게시글의 캠퍼스는 건드리지 않는다. */
+export function setUserCampus(userId, campus) {
+  if (!isValidCampus(campus)) throw new ValidationError('캠퍼스를 선택해주세요.');
+  db.prepare('UPDATE User SET campus = ? WHERE id = ?').run(campus, userId);
+}
+
 export const NICKNAME_CHANGE_DAYS = 30;
 
 /**
@@ -535,21 +566,23 @@ function decoratePost(row, kind) {
 }
 
 export function createPost(kind, {
-  userId, title, description, category, location, at, imageUrls = [], status = null,
+  userId, title, description, category, location, at, campus, imageUrls = [], status = null,
 }) {
   const cfg = postKindConfig(kind);
   requireNotSuspended(userId);
   const finalStatus = status ?? cfg.defaultStatus;
   if (!cfg.statuses.has(finalStatus)) throw new ValidationError(`invalid status: ${finalStatus}`);
+  if (!isValidCampus(campus)) throw new ValidationError('캠퍼스를 선택해주세요.');
   validateDatetime(at, cfg.dateField);
 
   const images = (imageUrls || []).slice(0, MAX_POST_IMAGES);
   return db.prepare(
     `INSERT INTO ${cfg.table}
-       (user_id, title, description, category, location, ${cfg.dateField}, image_url, image_urls, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (user_id, title, description, category, location, ${cfg.dateField},
+        campus, image_url, image_urls, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
-    userId, title, description, category, location, at,
+    userId, title, description, category, location, at, campus,
     images[0] ?? null, images.length ? JSON.stringify(images) : null, finalStatus
   ).lastInsertRowid;
 }
@@ -565,7 +598,7 @@ export function getPost(kind, postId) {
 }
 
 /** 키워드/카테고리/상태 필터. 셋 다 비우면 전체 목록이 된다. */
-export function searchPosts(kind, { keyword = '', category = null, status = null } = {}) {
+export function searchPosts(kind, { keyword = '', category = null, status = null, campus = null } = {}) {
   const cfg = postKindConfig(kind);
   const conditions = [];
   const params = [];
@@ -575,6 +608,9 @@ export function searchPosts(kind, { keyword = '', category = null, status = null
   }
   if (category) { conditions.push('p.category = ?'); params.push(category); }
   if (status) { conditions.push('p.status = ?'); params.push(status); }
+  // 캠퍼스가 지정되면 그 캠퍼스 글만 본다. AI 매칭·자동 알림도 이 필터를 거치므로
+  // 여기 한 곳만 지켜도 "경계를 넘지 않는다"가 전체에 적용된다.
+  if (campus) { conditions.push('p.campus = ?'); params.push(campus); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db.prepare(
     `SELECT p.*, u.nickname AS author_nickname, u.trust_score AS author_trust_score,
@@ -689,7 +725,9 @@ function checkPostOwner(kind, postId, requestingUserId) {
 }
 
 // 분실/습득 시각은 원본 UI와 동일하게 수정 대상에서 제외한다(삭제 후 재등록 안내).
-const UPDATABLE_POST_FIELDS = new Set(['title', 'description', 'category', 'location', 'image_url', 'image_urls', 'status']);
+const UPDATABLE_POST_FIELDS = new Set([
+  'title', 'description', 'category', 'location', 'campus', 'image_url', 'image_urls', 'status',
+]);
 
 export function updatePost(kind, postId, requestingUserId, fields) {
   const cfg = postKindConfig(kind);
@@ -702,6 +740,10 @@ export function updatePost(kind, postId, requestingUserId, fields) {
   const statusEntry = entries.find(([c]) => c === 'status');
   if (statusEntry && !cfg.statuses.has(statusEntry[1])) {
     throw new ValidationError(`invalid status: ${statusEntry[1]}`);
+  }
+  const campusEntry = entries.find(([c]) => c === 'campus');
+  if (campusEntry && !isValidCampus(campusEntry[1])) {
+    throw new ValidationError('캠퍼스를 선택해주세요.');
   }
   if (!entries.length) return;
 
@@ -741,6 +783,9 @@ export function createMatch(lostPostId, foundPostId, score, requestingUserId) {
   if (!foundPost) throw new ValidationError(`찾았어요 게시물 #${foundPostId} 을(를) 찾을 수 없습니다.`);
   if (![lostPost.user_id, foundPost.user_id].includes(requestingUserId)) {
     throw new PermissionDeniedError('본인 게시물에 대해서만 매칭을 확정할 수 있습니다.');
+  }
+  if (lostPost.campus !== foundPost.campus) {
+    throw new ValidationError('서로 다른 캠퍼스의 게시물은 매칭할 수 없습니다.');
   }
 
   const existing = getMatchByPosts(lostPostId, foundPostId);
@@ -921,6 +966,20 @@ function directChatParticipantIds(room) {
 /** 두 종류의 방을 하나로 처리하는 진입점 -- 모든 채팅 권한 검사가 여기를 지난다. */
 function chatRoomParticipantIds(room) {
   return room.match_id !== null ? matchParticipantIds(room.match_id) : directChatParticipantIds(room);
+}
+
+/**
+ * 채팅방 참여자 id 목록. 실시간 이벤트를 "이 방 사람들에게만" 보내려고 공개한다.
+ * 방이 없으면 빈 배열(이미 삭제된 방에 대고 이벤트를 쏘지 않기 위해).
+ */
+export function chatRoomParticipants(chatRoomId) {
+  const room = db.prepare('SELECT * FROM ChatRoom WHERE id = ?').get(chatRoomId);
+  if (!room) return [];
+  try {
+    return [...chatRoomParticipantIds(room)];
+  } catch {
+    return [];
+  }
 }
 
 /** Match 하나당 ChatRoom 하나를 get-or-create. 참여자만 열 수 있다. */

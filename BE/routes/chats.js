@@ -11,6 +11,7 @@ import * as db from '../db.js';
 import * as auth from '../auth.js';
 import { intOrNull, wrap } from '../helpers.js';
 import { imageUrlFor, upload } from '../upload.js';
+import { publish, subscribe } from '../events.js';
 
 const router = express.Router();
 
@@ -67,9 +68,17 @@ router.get('/chats/:id/messages', wrap(async (req, res) => {
 router.post('/chats/:id/messages', upload.single('image'), wrap(async (req, res) => {
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
-  const message = db.sendMessage(
-    intOrNull(req.params.id), user.id, req.body?.content, imageUrlFor(req.file)
-  );
+  const roomId = intOrNull(req.params.id);
+  const message = db.sendMessage(roomId, user.id, req.body?.content, imageUrlFor(req.file));
+
+  // 이 방 사람들에게 즉시 알린다. 보낸 사람도 포함해 보내야 여러 탭을 열어 둔
+  // 경우에 모든 탭이 같은 상태가 된다.
+  publish(db.chatRoomParticipants(roomId), 'message', {
+    chatRoomId: roomId,
+    messageId: message.id,
+    senderUserId: user.id,
+  });
+
   res.status(201).json(message);
 }));
 
@@ -77,8 +86,28 @@ router.post('/chats/:id/messages', upload.single('image'), wrap(async (req, res)
 router.post('/messages/:id/reactions', wrap(async (req, res) => {
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
-  res.json(db.toggleMessageReaction(intOrNull(req.params.id), user.id, req.body?.emoji));
+  const result = db.toggleMessageReaction(intOrNull(req.params.id), user.id, req.body?.emoji);
+  const message = db.getMessage(intOrNull(req.params.id));
+  if (message) {
+    publish(db.chatRoomParticipants(message.chat_room_id), 'reaction', {
+      chatRoomId: message.chat_room_id,
+    });
+  }
+  res.json(result);
 }));
+
+/**
+ * 실시간 이벤트 스트림 (SSE).
+ *
+ * 브라우저가 EventSource 로 이걸 열어 두면, 새 메시지·반응·알림이 생길 때
+ * 서버가 바로 밀어준다. 폴링은 그대로 남겨 두되 간격을 크게 늘려서,
+ * 스트림이 끊긴 상황에서도 결국 따라잡히게 한다.
+ */
+router.get('/stream', (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  subscribe(user.id, res);
+});
 
 /**
  * 읽음 처리. 채팅방을 실제로 보고 있을 때만 호출된다 (목록 화면에서는 호출하지 않음).
@@ -90,6 +119,10 @@ router.post('/chats/:id/read', wrap(async (req, res) => {
   const roomId = intOrNull(req.params.id);
   const messages = db.markMessagesAsRead(roomId, user.id);
   const notifications = db.markMessageNotificationsAsReadForChatRoom(roomId, user.id);
+  // 읽은 메시지가 있을 때만 알린다 -- 방을 열어 두기만 해도 이벤트가 쏟아지지 않도록.
+  if (messages > 0) {
+    publish(db.chatRoomParticipants(roomId), 'read', { chatRoomId: roomId, readerUserId: user.id });
+  }
   res.json({ messages, notifications });
 }));
 

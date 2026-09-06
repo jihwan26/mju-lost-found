@@ -48,8 +48,37 @@ export default function ProfileScreen({ me, onRefresh }) {
           <dt>닉네임</dt><dd><b>{me.user.nickname}</b></dd>
           <dt>이메일</dt><dd className="faint">{me.user.email}</dd>
           <dt>명지도</dt><dd><TrustScore score={me.user.trustScore} showLabel={false} /></dd>
+          <dt>캠퍼스</dt>
+          <dd>{me.campuses.find((c) => c.key === me.user.campus)?.label ?? me.user.campus}</dd>
           {me.user.isAdmin && <><dt>권한</dt><dd><span className="tag accent">관리자</span></dd></>}
         </dl>
+      </div>
+
+      <div className="section">
+        <h3>기본 캠퍼스</h3>
+        <p className="muted" style={{ marginTop: 0 }}>
+          게시판을 열었을 때 처음 보이는 캠퍼스이자, 글을 쓸 때의 기본값입니다.
+          글마다 캠퍼스를 따로 고를 수 있습니다.
+        </p>
+        <div className="row tight">
+          {me.campuses.map((c) => (
+            <button
+              key={c.key}
+              className={me.user.campus === c.key ? 'primary' : ''}
+              disabled={busy || me.user.campus === c.key}
+              onClick={async () => {
+                setBusy(true); setError(''); setNotice('');
+                try {
+                  await patch('/api/me/campus', { campus: c.key });
+                  setNotice(c.label + '로 바꿨습니다.');
+                  onRefresh();
+                } catch (err) { setError(err.message); } finally { setBusy(false); }
+              }}
+            >
+              {c.label} ({c.city})
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="section">

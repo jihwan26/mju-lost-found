@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { get, post, qs } from '../api.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { get, post, qs, sendForm } from '../api.js';
 import { navigate } from '../navigation.js';
 import { BOARD_META } from '../constants.js';
 import Banner from '../components/Banner.jsx';
@@ -19,14 +19,19 @@ import MatchCandidates from '../components/MatchCandidates.jsx';
  */
 export default function BoardList({ kind, me }) {
   const meta = BOARD_META[kind];
-  const [mode, setMode] = useState('keyword'); // keyword | ai
+  const [mode, setMode] = useState('keyword'); // keyword | ai | image
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('전체');
   const [status, setStatus] = useState('전체');
+  // 캠퍼스는 게시판 전체에 걸리는 필터라 검색 폼 밖(탭)으로 뺐다.
+  const [campus, setCampus] = useState(me.user.campus);
   const [posts, setPosts] = useState(null);
   const [aiResults, setAiResults] = useState(null);
+  // 사진 검색이 사진을 어떻게 읽었는지 보여줘야 사용자가 결과를 납득한다.
+  const [caption, setCaption] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
 
   // 두 모드는 검색 대상 게시판이 반대라서 상태 선택지도 서로 다르다.
   const statusOptions = mode === 'keyword' ? meta.statuses : meta.aiStatuses;
@@ -35,23 +40,49 @@ export default function BoardList({ kind, me }) {
     setBusy(true);
     setError('');
     try {
-      setPosts(await get(`/api/posts/${kind}${qs({ keyword, category, status })}`));
+      setPosts(await get(`/api/posts/${kind}${qs({ keyword, category, status, campus })}`));
     } catch (e) {
       setError(e.message);
       setPosts([]);
     } finally {
       setBusy(false);
     }
-  }, [kind, keyword, category, status]);
+  }, [kind, keyword, category, status, campus]);
 
-  // 첫 진입 시 전체 목록을 보여준다 (Streamlit 이 매 실행마다 목록을 그리던 것과 같은 효과).
-  useEffect(() => { loadKeyword(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [kind]);
+  // 첫 진입 시, 그리고 캠퍼스를 바꿀 때마다 목록을 다시 불러온다.
+  useEffect(() => { loadKeyword(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [kind, campus]);
 
   // 모드를 바꾸면 상태 필터 선택지가 통째로 달라지므로 "전체"로 되돌린다.
   function switchMode(next) {
     setMode(next);
     setStatus('전체');
     setAiResults(null);
+    setCaption('');
+  }
+
+  /** 사진으로 검색. 서버가 사진을 검색어로 바꾼 뒤 의미 검색을 태운다. */
+  async function searchByImage(file) {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    setCaption('');
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('kind', meta.aiTargetKind);
+      if (category !== '전체') fd.append('category', category);
+      if (status !== '전체') fd.append('status', status);
+      fd.append('campus', campus);
+      const data = await sendForm('/api/ai/image-search', 'POST', fd);
+      setCaption(data.caption);
+      setAiResults(data.results);
+    } catch (err) {
+      setAiResults(null);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   }
 
   async function runSearch(e) {
@@ -67,7 +98,7 @@ export default function BoardList({ kind, me }) {
     setError('');
     try {
       const data = await post('/api/ai/search', {
-        query: keyword, kind: meta.aiTargetKind, category, status,
+        query: keyword, kind: meta.aiTargetKind, category, status, campus,
       });
       setAiResults(data.results);
     } catch (err) {
@@ -80,11 +111,41 @@ export default function BoardList({ kind, me }) {
 
   return (
     <>
+      {/* 캠퍼스 전환 -- 인문/자연은 서로 다른 지역이라 글이 섞이면 방해가 된다. */}
+      <div className="campus-tabs">
+        {me.campuses.map((c) => (
+          <button
+            key={c.key}
+            className={campus === c.key ? 'active' : ''}
+            onClick={() => setCampus(c.key)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
       <div className="card">
         <div className="tabs" style={{ marginBottom: 12 }}>
           <button className={mode === 'keyword' ? 'active' : ''} onClick={() => switchMode('keyword')}>키워드 검색</button>
           <button className={mode === 'ai' ? 'active' : ''} onClick={() => switchMode('ai')}>AI 의미 검색</button>
+          {me.imageSearchEnabled && (
+            <button className={mode === 'image' ? 'active' : ''} onClick={() => switchMode('image')}>사진으로 검색</button>
+          )}
         </div>
+        {mode === 'image' ? (
+          <div>
+            <p className="muted" style={{ marginTop: 0 }}>
+              잃어버린 물건과 비슷한 사진을 올리면, AI가 사진을 읽어 비슷한 게시물을 찾아줍니다.
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".jpg,.jpeg,.png"
+              disabled={busy}
+              onChange={(e) => searchByImage(e.target.files[0])}
+            />
+          </div>
+        ) : (
         <form onSubmit={runSearch}>
           <div className="row">
             <div style={{ flex: 2 }}>
@@ -113,11 +174,18 @@ export default function BoardList({ kind, me }) {
             </div>
           </div>
         </form>
+        )}
       </div>
 
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
 
-      {busy && <Loading text={mode === 'ai' ? 'AI가 의미가 비슷한 게시물을 찾는 중입니다...' : '불러오는 중...'} />}
+      {busy && (
+        <Loading text={
+          mode === 'image' ? 'AI가 사진을 읽는 중입니다...'
+            : mode === 'ai' ? 'AI가 의미가 비슷한 게시물을 찾는 중입니다...'
+              : '불러오는 중...'
+        } />
+      )}
 
       {!busy && mode === 'keyword' && (
         posts === null ? null
@@ -158,20 +226,35 @@ export default function BoardList({ kind, me }) {
             )
       )}
 
-      {!busy && mode === 'ai' && (
+      {!busy && (mode === 'ai' || mode === 'image') && (
         aiResults === null
-          ? <Empty>문장으로 검색어를 입력하고 &lsquo;검색&rsquo; 버튼을 눌러보세요.<br />({meta.aiHint})</Empty>
-          : aiResults.length === 0
-            ? <Empty>의미가 비슷한 게시물을 찾지 못했습니다.</Empty>
-            : (
-              <>
-                <p className="muted" style={{ marginBottom: 14 }}>
-                  <b>AI 검색 결과 {aiResults.length}건</b><span className="sep">·</span>{meta.aiResultNote}
+          ? (
+            <Empty>
+              {mode === 'image'
+                ? '사진을 올리면 비슷한 게시물을 찾아드립니다.'
+                : <>문장으로 검색어를 입력하고 &lsquo;검색&rsquo; 버튼을 눌러보세요.<br />({meta.aiHint})</>}
+            </Empty>
+          )
+          : (
+            <>
+              {caption && (
+                <p className="muted" style={{ marginBottom: 10 }}>
+                  AI가 읽은 사진: <b>{caption}</b>
                 </p>
-                {/* 자유 문장 검색이라 짝지을 기준 게시물이 없다 -> 매칭 확정 버튼 없음 */}
-                <MatchCandidates kind={meta.aiTargetKind} results={aiResults} />
-              </>
-            )
+              )}
+              {aiResults.length === 0
+                ? <Empty>비슷한 게시물을 찾지 못했습니다.</Empty>
+                : (
+                  <>
+                    <p className="muted" style={{ marginBottom: 14 }}>
+                      <b>검색 결과 {aiResults.length}건</b><span className="sep">·</span>{meta.aiResultNote}
+                    </p>
+                    {/* 기준 게시물이 없는 검색이라 매칭 확정 버튼은 붙이지 않는다. */}
+                    <MatchCandidates kind={meta.aiTargetKind} results={aiResults} />
+                  </>
+                )}
+            </>
+          )
       )}
     </>
   );
