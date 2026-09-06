@@ -13,35 +13,41 @@ import ConfirmMatchButton from './ConfirmMatchButton.jsx';
 export default function MatchCandidates({ kind, results, sourcePostId, onMatched }) {
   const dateField = kind === 'found' ? 'found_at' : 'lost_at';
   const dateLabel = kind === 'found' ? '습득 시간' : '분실 시간';
-  const boardLabel = kind === 'found' ? '📦 찾았어요 게시글' : '🔍 찾아요 게시글';
+  const boardLabel = kind === 'found' ? '찾았어요' : '찾아요';
 
-  return results.map(({ post: p, score }) => (
-    <div className="card" key={`${kind}-${p.id}`}>
-      <div className="card-row">
-        <Thumb src={p.image_url} />
-        <div className="card-body">
-          <div className="faint">{boardLabel}</div>
-          <p className="card-title">{p.title}</p>
-          <p className="meta">{p.category} · {p.location} · {dateLabel}: {p[dateField]}</p>
-          <p className="meta">작성자: {p.author_nickname}</p>
-          <p className="desc">{p.description}</p>
-          <p className="faint mono-score">
-            AI 유사도 점수: {score.toFixed(2)} (높을수록 의미가 비슷합니다)
-          </p>
+  return (
+    <div className="list">
+      {results.map(({ post: p, score }) => (
+        <div className="list-item" key={`${kind}-${p.id}`}>
+          <Thumb src={p.image_url} />
+          <div className="list-body">
+            <p className="item-title">
+              <span className="tag accent" style={{ marginRight: 7 }}>{boardLabel}</span>
+              {p.title}
+            </p>
+            <p className="meta">
+              {p.category}<span className="sep">·</span>{p.location}
+              <span className="sep">·</span>{dateLabel} {p[dateField]}
+            </p>
+            <p className="desc">{p.description}</p>
+            <p className="faint mono-score" style={{ marginTop: 6 }}>
+              유사도 {score.toFixed(2)}<span className="sep">·</span>{p.author_nickname}
+            </p>
+          </div>
+          <div className="list-actions">
+            <button className="sm" onClick={() => navigate(`/${kind}/${p.id}`)}>상세보기</button>
+            {sourcePostId != null && (
+              <ConfirmMatchButton
+                candidateKind={kind}
+                candidateId={p.id}
+                sourceId={sourcePostId}
+                score={score}
+                onMatched={onMatched}
+              />
+            )}
+          </div>
         </div>
-        <div className="card-actions">
-          <button className="sm" onClick={() => navigate(`/${kind}/${p.id}`)}>상세보기</button>
-          {sourcePostId != null && (
-            <ConfirmMatchButton
-              candidateKind={kind}
-              candidateId={p.id}
-              sourceId={sourcePostId}
-              score={score}
-              onMatched={onMatched}
-            />
-          )}
-        </div>
-      </div>
+      ))}
     </div>
-  ));
+  );
 }

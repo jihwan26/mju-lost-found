@@ -156,7 +156,7 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
           <ReportButton
             targetType="user"
             targetId={room.otherUserId}
-            label={`🚩 ${room.otherNickname}님 신고하기`}
+            label={`${room.otherNickname}님 신고`}
             reasons={me.reportReasons}
           />
         </div>
@@ -188,7 +188,7 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
                   <ReportButton
                     targetType="message"
                     targetId={m.id}
-                    label="🚩 신고"
+                    label="신고"
                     reasons={me.reportReasons}
                   />
                 )}

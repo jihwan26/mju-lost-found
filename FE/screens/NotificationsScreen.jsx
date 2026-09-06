@@ -55,7 +55,7 @@ export default function NotificationsScreen({ onCountsChanged }) {
   return (
     <>
       <div className="page-head">
-        <h1>🔔 알림</h1>
+        <h1>알림</h1>
         <p>읽지 않은 알림 {data?.unreadCount ?? 0}개</p>
       </div>
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
@@ -70,7 +70,7 @@ export default function NotificationsScreen({ onCountsChanged }) {
           <div className="card-row">
             <div className="card-body">
               <p className="card-title">
-                {!n.is_read && '🔵 '}{n.title}
+                {!n.is_read && <span className="unread-dot" />}{n.title}
                 {' '}<span className="pill">{NOTIFICATION_TYPE_LABELS[n.type] || n.type}</span>
               </p>
               <p className="desc" style={{ marginTop: 4 }}>{n.content}</p>

@@ -16,7 +16,7 @@ export default function ConfirmMatchButton({ candidateKind, candidateId, sourceI
   const lostPostId = candidateKind === 'found' ? sourceId : candidateId;
   const foundPostId = candidateKind === 'found' ? candidateId : sourceId;
 
-  if (state === 'done') return <span className="faint">✅ 매칭 확정</span>;
+  if (state === 'done') return <span className="status done">매칭 확정</span>;
 
   async function confirm() {
     setState('busy');

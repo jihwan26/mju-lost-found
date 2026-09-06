@@ -51,7 +51,7 @@ export default function MatchesScreen({ me }) {
   return (
     <>
       <div className="page-head">
-        <h1>🔗 내 매칭</h1>
+        <h1>내 매칭</h1>
         <p>내가 확정한 AI 매칭 결과를 확인하고, 필요하면 취소할 수 있습니다.</p>
       </div>
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
@@ -83,7 +83,7 @@ export default function MatchesScreen({ me }) {
               <ReportButton
                 targetType="user"
                 targetId={otherUserId}
-                label={`🚩 ${otherNickname}님 신고`}
+                label={`${otherNickname}님 신고`}
                 reasons={me.reportReasons}
               />
             </p>

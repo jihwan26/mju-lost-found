@@ -36,7 +36,7 @@ export default function AdminScreen() {
   return (
     <>
       <div className="page-head">
-        <h1>🛡️ 관리자 - 신고 처리</h1>
+        <h1>신고 처리</h1>
         <p>신고된 게시물·메시지·사용자를 검토하고 처리합니다. 처리 후에는 되돌릴 수 없습니다.</p>
       </div>
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>

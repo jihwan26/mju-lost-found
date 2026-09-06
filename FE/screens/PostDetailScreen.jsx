@@ -66,38 +66,46 @@ export default function PostDetailScreen({ kind, id, me }) {
 
   return (
     <>
-      <button className="ghost sm" onClick={() => navigate(`/${kind}`)}>← {meta.title}으로</button>
+      <button className="ghost sm" style={{ marginLeft: -8 }} onClick={() => navigate(`/${kind}`)}>
+        ← {meta.title}
+      </button>
 
-      <div className="page-head" style={{ marginTop: 12 }}>
+      <div className="page-head" style={{ marginTop: 10 }}>
         <h1>{postData.title}</h1>
-        <p>{meta.icon} {meta.title} · <StatusPill status={postData.status} /></p>
+        <p>
+          <span className="tag accent">{meta.title}</span>
+          <span className="sep">·</span>
+          <StatusPill status={postData.status} />
+        </p>
       </div>
 
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
       <Banner kind="success" onClose={() => setNotice('')}>{notice}</Banner>
 
-      <div className="card">
-        {postData.image_url && <img className="detail-image" src={postData.image_url} alt="" />}
-        <p className="desc" style={{ marginTop: 0 }}>{postData.description}</p>
-        <div className="section" style={{ marginTop: 14, paddingTop: 14 }}>
-          <p className="meta"><b>작성자</b> {postData.author_nickname}</p>
-          <p className="meta"><b>카테고리</b> {postData.category}</p>
-          <p className="meta"><b>장소</b> {postData.location}</p>
-          <p className="meta"><b>{meta.dateLabel} 시간</b> {postData[meta.dateField]}</p>
-          <p className="meta"><b>작성일</b> {postData.created_at}</p>
-        </div>
+      {postData.image_url && <img className="detail-image" src={postData.image_url} alt="" />}
+      <p className="desc" style={{ marginTop: 0, fontSize: '15.5px' }}>{postData.description}</p>
+
+      <div className="section">
+        <h3>상세 정보</h3>
+        <dl className="spec">
+          <dt>작성자</dt><dd>{postData.author_nickname}</dd>
+          <dt>카테고리</dt><dd>{postData.category}</dd>
+          <dt>장소</dt><dd>{postData.location}</dd>
+          <dt>{meta.dateLabel} 시간</dt><dd>{postData[meta.dateField]}</dd>
+          <dt>작성일</dt><dd>{postData.created_at}</dd>
+        </dl>
       </div>
 
-      <div className="card">
-        <div className="row tight">
+      <div className="section">
+        <div className="row tight" style={{ alignItems: 'center' }}>
           {/* 자기 글에는 채팅/신고 버튼을 띄우지 않는다 (서버도 거부하지만, 헛클릭을 막는다). */}
           {!isMine && (
-            <button className="primary" onClick={startDirectChat}>💬 작성자와 채팅하기</button>
+            <button className="primary" onClick={startDirectChat}>작성자와 채팅하기</button>
           )}
           {!isMine && (
             <ReportButton targetType="post" targetId={reportTargetId} reasons={me.reportReasons} />
           )}
-          {isMine && <span className="muted">내가 작성한 게시물입니다. 수정·삭제는 &lsquo;내 게시물&rsquo;에서 할 수 있어요.</span>}
+          {isMine && <span className="muted">내가 쓴 글입니다. 수정·삭제는 &lsquo;내 게시물&rsquo;에서 할 수 있어요.</span>}
         </div>
       </div>
 

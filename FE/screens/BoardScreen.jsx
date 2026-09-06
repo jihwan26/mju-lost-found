@@ -18,7 +18,7 @@ export default function BoardScreen({ kind, me }) {
   return (
     <>
       <div className="page-head">
-        <h1>{meta.icon} {meta.title}</h1>
+        <h1>{meta.heading}</h1>
         <p>{meta.subtitle}</p>
       </div>
       <div className="tabs">

@@ -22,7 +22,7 @@ export default function MyPostsScreen({ me }) {
   return (
     <>
       <div className="page-head">
-        <h1>🗂️ 내 게시물</h1>
+        <h1>내 게시물</h1>
         <p>내가 작성한 게시물을 확인하고 수정·삭제·상태 변경을 할 수 있습니다.</p>
       </div>
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>

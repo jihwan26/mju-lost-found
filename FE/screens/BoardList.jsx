@@ -122,29 +122,38 @@ export default function BoardList({ kind, me }) {
       {!busy && mode === 'keyword' && (
         posts === null ? null
           : posts.length === 0 ? <Empty>조건에 맞는 게시물이 없습니다.</Empty>
-            : posts.map((p) => (
-              <div className="card" key={p.id}>
-                <div className="card-row">
-                  <Thumb src={p.image_url} />
-                  <div className="card-body">
-                    <p className="card-title">{p.title}</p>
-                    <p className="meta">
-                      {p.category} · {p.location} · {p[meta.dateField]} · <StatusPill status={p.status} />
-                    </p>
-                    <p className="meta">작성자: {p.author_nickname}</p>
-                  </div>
-                  <div className="card-actions">
-                    <button className="sm" onClick={() => navigate(`/${kind}/${p.id}`)}>상세보기</button>
-                    {/* 새 탭 링크 -- 현재 탭의 검색 조건을 전혀 건드리지 않는다.
-                        진짜 <a> 여야 브라우저의 "새 탭에서 열기"가 동작하므로,
-                        <button> 을 감싸지 않고 링크 자체를 버튼처럼 꾸민다. */}
-                    <a className="linkbtn" href={`/${kind}/${p.id}`} target="_blank" rel="noreferrer">
-                      🔗 새 탭
-                    </a>
-                  </div>
+            : (
+              <>
+                <p className="faint" style={{ marginBottom: 6 }}>{posts.length}건</p>
+                <div className="list">
+                  {posts.map((p) => (
+                    <div className="list-item" key={p.id}>
+                      <Thumb src={p.image_url} />
+                      <div className="list-body">
+                        <p className="item-title">{p.title}</p>
+                        <p className="meta">
+                          {p.category}<span className="sep">·</span>{p.location}
+                          <span className="sep">·</span>{p[meta.dateField]}
+                        </p>
+                        <p className="faint">
+                          {p.author_nickname}<span className="sep">·</span>
+                          <StatusPill status={p.status} />
+                        </p>
+                      </div>
+                      <div className="list-actions">
+                        <button className="sm" onClick={() => navigate(`/${kind}/${p.id}`)}>상세보기</button>
+                        {/* 새 탭 링크 -- 현재 탭의 검색 조건을 전혀 건드리지 않는다.
+                            진짜 <a> 여야 브라우저의 "새 탭에서 열기"가 동작하므로,
+                            <button> 을 감싸지 않고 링크 자체를 버튼처럼 꾸민다. */}
+                        <a className="linkbtn" href={`/${kind}/${p.id}`} target="_blank" rel="noreferrer">
+                          새 탭
+                        </a>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))
+              </>
+            )
       )}
 
       {!busy && mode === 'ai' && (
@@ -154,7 +163,9 @@ export default function BoardList({ kind, me }) {
             ? <Empty>의미가 비슷한 게시물을 찾지 못했습니다.</Empty>
             : (
               <>
-                <p className="muted"><b>AI 검색 결과 ({aiResults.length}건)</b> · {meta.aiResultNote}</p>
+                <p className="muted" style={{ marginBottom: 14 }}>
+                  <b>AI 검색 결과 {aiResults.length}건</b><span className="sep">·</span>{meta.aiResultNote}
+                </p>
                 {/* 자유 문장 검색이라 짝지을 기준 게시물이 없다 -> 매칭 확정 버튼 없음 */}
                 <MatchCandidates kind={meta.aiTargetKind} results={aiResults} />
               </>

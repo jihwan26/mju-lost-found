@@ -9,7 +9,7 @@ import Banner from './Banner.jsx';
  * 유효성 검사(대상 존재, 자기 신고 금지, 중복 금지)는 전부 서버가 한다.
  * 여기는 화면 표시만 담당하므로, 서버와 규칙이 어긋날 여지가 없다.
  */
-export default function ReportButton({ targetType, targetId, label = '🚩 신고하기', reasons }) {
+export default function ReportButton({ targetType, targetId, label = '신고', reasons }) {
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [reason, setReason] = useState(reasons[0]);
@@ -17,7 +17,7 @@ export default function ReportButton({ targetType, targetId, label = '🚩 신�
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (done) return <span className="faint">✅ 신고가 접수되었습니다.</span>;
+  if (done) return <span className="status done">신고 접수됨</span>;
 
   async function submit() {
     setBusy(true);

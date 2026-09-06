@@ -10,8 +10,8 @@
  */
 export const BOARD_META = {
   lost: {
-    icon: '🔍',
-    title: '찾아요 게시판',
+    title: '찾아요',
+    heading: '찾아요 게시판',
     subtitle: '잃어버린 물건을 등록하고 찾아보세요.',
     dateField: 'lost_at',
     dateLabel: '분실',
@@ -20,12 +20,12 @@ export const BOARD_META = {
     aiTargetKind: 'found',
     aiStatuses: ['전체', '보관 중', '완료'],
     aiHint: '예: 검은색 에어팟을 도서관에서 잃어버렸어요',
-    aiResultNote: 'AI 검색 결과는 검색어와 의미가 비슷한 찾았어요 게시판의 습득물 게시글입니다.',
-    matchButton: '🤖 AI로 유사한 습득물 찾기',
+    aiResultNote: '검색어와 의미가 비슷한 찾았어요 게시판의 습득물입니다.',
+    matchButton: 'AI로 비슷한 습득물 찾기',
   },
   found: {
-    icon: '📦',
-    title: '찾았어요 게시판',
+    title: '찾았어요',
+    heading: '찾았어요 게시판',
     subtitle: '주운 물건을 등록해 주인을 찾아주세요.',
     dateField: 'found_at',
     dateLabel: '습득',
@@ -33,8 +33,8 @@ export const BOARD_META = {
     aiTargetKind: 'lost',
     aiStatuses: ['전체', '찾는 중', '찾음'],
     aiHint: '예: 도서관에서 검은색 무선 이어폰을 주웠어요',
-    aiResultNote: 'AI 검색 결과는 검색어와 의미가 비슷한 찾아요 게시판의 분실물 게시글입니다.',
-    matchButton: '🤖 AI로 유사한 분실물 찾기',
+    aiResultNote: '검색어와 의미가 비슷한 찾아요 게시판의 분실물입니다.',
+    matchButton: 'AI로 비슷한 분실물 찾기',
   },
 };
 

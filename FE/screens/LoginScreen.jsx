@@ -22,7 +22,7 @@ export default function LoginScreen({ me, onRefresh }) {
   return (
     <div style={{ maxWidth: 460, margin: '48px auto' }}>
       <div className="page-head" style={{ textAlign: 'center' }}>
-        <h1>🔎 명지 스마트 분실물 센터</h1>
+        <h1>명지대학교 분실물 센터</h1>
         <p>명지대학교 교내에서 잃어버리거나 습득한 물건을 쉽게 찾을 수 있는 분실물 플랫폼</p>
       </div>
       <Banner kind="error">{loginError || error}</Banner>
