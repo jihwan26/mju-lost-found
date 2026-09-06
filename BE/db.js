@@ -440,14 +440,53 @@ export function getUserByEmail(email) {
     .get(normalized) ?? null;
 }
 
+/**
+ * 환경변수로 지정한 관리자 이메일 목록.
+ *
+ * 배포된 서버에는 DB를 직접 만질 방법이 없어서, 첫 관리자를 만들 통로가 필요하다.
+ * ADMIN_EMAILS 에 쉼표로 이메일을 적어 두면 그 계정은 로그인할 때 자동으로
+ * 관리자가 된다. (권한을 주기만 하고 빼앗지는 않는다 -- 환경변수에서 이름을 지웠다고
+ * 기존 관리자가 갑자기 잘리면 오히려 사고가 나기 쉽다. 강등은 관리자 화면에서 한다.)
+ */
+const ADMIN_EMAILS = new Set(
+  String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+export function isBootstrapAdminEmail(email) {
+  return ADMIN_EMAILS.has(String(email ?? '').trim().toLowerCase());
+}
+
+/** ADMIN_EMAILS 에 적힌 계정 중 이미 가입한 사람에게 관리자 권한을 준다. */
+function grantBootstrapAdmins() {
+  if (!ADMIN_EMAILS.size) return;
+  const qm = Array(ADMIN_EMAILS.size).fill('?').join(',');
+  db.prepare(`UPDATE User SET is_admin = 1 WHERE LOWER(email) IN (${qm}) AND is_admin = 0`)
+    .run(...ADMIN_EMAILS);
+}
+
+// 서버가 뜰 때 한 번 실행한다. 이 호출을 파일 위쪽(runMigrations 옆)에 두면
+// 아직 초기화되지 않은 ADMIN_EMAILS 를 건드려 서버가 아예 뜨지 못한다.
+grantBootstrapAdmins();
+
 /** 인증된 이메일에 해당하는 User 행을 가져오거나 새로 만들고 id 를 돌려준다. */
 export function resolveUserId(email, name) {
   const normalized = String(email ?? '').trim().toLowerCase();
   if (!normalized) throw new ValidationError('이메일이 없습니다.');
+
   const existing = getUserByEmail(normalized);
-  if (existing) return existing.id;
-  // 새로 만들 때는 항상 소문자로 저장한다.
-  return createUser(normalized, name || normalized.split('@')[0]);
+  const id = existing
+    ? existing.id
+    // 새로 만들 때는 항상 소문자로 저장한다.
+    : createUser(normalized, name || normalized.split('@')[0]);
+
+  // 아직 가입 전이던 관리자도 첫 로그인에 바로 권한을 받게 한다.
+  if (ADMIN_EMAILS.has(normalized)) {
+    db.prepare('UPDATE User SET is_admin = 1 WHERE id = ? AND is_admin = 0').run(id);
+  }
+  return id;
 }
 
 /**
