@@ -105,6 +105,17 @@ if (fs.existsSync(DIST_DIR)) {
 app.listen(PORT, () => {
   console.log(`서버 실행: http://localhost:${PORT}`);
   console.log(`데이터 위치: ${db.DATA_DIR}`);
+  if (db.STORAGE_IS_EPHEMERAL) {
+    console.warn(
+      '\n****************************************************************\n'
+      + '  경고: 데이터가 재배포하면 사라지는 곳에 저장되고 있습니다.\n'
+      + '  계정·닉네임·게시글·채팅이 배포할 때마다 초기화됩니다.\n'
+      + '\n'
+      + '  Railway > 서비스 > Settings > Volumes 에서 볼륨을 만들고\n'
+      + '  Mount path 를 /data 로 지정하세요. (그러면 자동으로 잡힙니다)\n'
+      + '****************************************************************\n'
+    );
+  }
   if (!auth.isAuthConfigured()) {
     console.log('Google 로그인 미설정'
       + (auth.isDevLoginEnabled() ? ' -- 개발용 로그인이 활성화되어 있습니다.' : ''));

@@ -20,11 +20,32 @@ import { DEFAULT_CAMPUS, isValidCampus } from './campus.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-// Railway에서는 Volume을 /data 에 마운트하고 DATA_DIR=/data 로 지정한다.
-// 그래야 재배포해도 DB와 업로드 이미지가 지워지지 않는다. (README 참고)
-export const DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR || './data');
+// DB와 업로드 이미지를 어디에 둘지.
+//
+// Railway 컨테이너의 기본 디스크는 재배포할 때마다 초기화된다. 그 위에 DB를 두면
+// 배포 한 번에 계정·닉네임·게시글이 전부 사라진다(로그인할 때마다 닉네임을 다시
+// 물어보는 증상이 바로 이것이다).
+//
+// 우선순위:
+//   1. DATA_DIR            사람이 직접 지정한 경로
+//   2. Railway 볼륨 경로    볼륨을 붙였는데 DATA_DIR 을 깜빡한 경우를 자동으로 구제한다.
+//                          RAILWAY_VOLUME_MOUNT_PATH 는 볼륨이 실제로 붙어 있을 때만
+//                          Railway 가 넣어주므로, 없는 경로를 잘못 잡을 일이 없다.
+//   3. ./data              로컬 개발용
+const RAILWAY_VOLUME = process.env.RAILWAY_VOLUME_MOUNT_PATH || '';
+export const DATA_DIR = path.resolve(PROJECT_ROOT, process.env.DATA_DIR || RAILWAY_VOLUME || './data');
 export const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DB_PATH = path.join(DATA_DIR, 'lost_found.db');
+
+/**
+ * 지금 데이터가 "재배포하면 날아가는 곳"에 저장되고 있는지.
+ * Railway 위에서 도는데 볼륨 안에 있지 않으면 참이다. 이 값이 참이면 서버가
+ * 시작할 때 경고를 찍고, 관리자 화면에도 눈에 띄게 알려준다.
+ */
+export const STORAGE_IS_EPHEMERAL = Boolean(
+  (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_PUBLIC_DOMAIN)
+  && !(RAILWAY_VOLUME && DATA_DIR.startsWith(path.resolve(RAILWAY_VOLUME)))
+);
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -401,15 +422,32 @@ export function getUserById(userId) {
   return db.prepare('SELECT * FROM User WHERE id = ?').get(userId) ?? null;
 }
 
+/**
+ * 이메일로 계정 찾기 -- 대소문자를 가리지 않는다.
+ *
+ * 구글이 같은 사람에게 늘 똑같은 표기의 이메일을 준다는 보장이 없다.
+ * 대소문자만 다른 값이 한 번이라도 들어오면 계정이 새로 만들어지고, 그 순간
+ * 닉네임·게시글·명지도가 전부 다른 계정에 남아 "처음 온 사람"처럼 보인다.
+ * 그래서 조회는 소문자로 맞춰서 한다.
+ *
+ * 대소문자만 다른 행이 이미 둘 이상 쌓여 있다면 가장 먼저 만들어진 것을 쓴다
+ * (매번 같은 계정을 고르게 해서, 로그인할 때마다 다른 계정이 걸리는 일을 막는다).
+ */
 export function getUserByEmail(email) {
-  return db.prepare('SELECT * FROM User WHERE email = ?').get(email) ?? null;
+  const normalized = String(email ?? '').trim().toLowerCase();
+  if (!normalized) return null;
+  return db.prepare('SELECT * FROM User WHERE LOWER(email) = ? ORDER BY id LIMIT 1')
+    .get(normalized) ?? null;
 }
 
 /** 인증된 이메일에 해당하는 User 행을 가져오거나 새로 만들고 id 를 돌려준다. */
 export function resolveUserId(email, name) {
-  const existing = getUserByEmail(email);
+  const normalized = String(email ?? '').trim().toLowerCase();
+  if (!normalized) throw new ValidationError('이메일이 없습니다.');
+  const existing = getUserByEmail(normalized);
   if (existing) return existing.id;
-  return createUser(email, name || email.split('@')[0]);
+  // 새로 만들 때는 항상 소문자로 저장한다.
+  return createUser(normalized, name || normalized.split('@')[0]);
 }
 
 /**
@@ -1818,5 +1856,7 @@ export function getAdminStats(requestingAdminUserId) {
       dismissed: count("SELECT COUNT(*) c FROM Report WHERE status = 'dismissed'"),
     },
     comments: count('SELECT COUNT(*) c FROM Comment'),
+    // 데이터가 날아가는 곳에 저장되고 있으면 관리자에게 알린다.
+    storage: { ephemeral: STORAGE_IS_EPHEMERAL, dataDir: DATA_DIR },
   };
 }

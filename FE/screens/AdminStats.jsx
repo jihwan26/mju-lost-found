@@ -31,6 +31,14 @@ export default function AdminStats() {
 
   return (
     <div className="section" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+      {/* 볼륨을 안 붙이면 배포할 때마다 데이터가 사라진다. 눈에 띄어야 고칠 수 있다. */}
+      {stats.storage?.ephemeral && (
+        <Banner kind="error">
+          <b>데이터가 저장되지 않고 있습니다.</b><br />
+          지금은 재배포할 때마다 계정·게시글·채팅이 모두 사라집니다.
+          Railway → Settings → Volumes 에서 볼륨을 만들고 Mount path 를 <b>/data</b> 로 지정하세요.
+        </Banner>
+      )}
       <h3>한눈에 보기</h3>
       <div className="stat-grid">
         <Stat label="전체 사용자" value={stats.users.total} sub={`오늘 +${stats.users.newToday}`} />
