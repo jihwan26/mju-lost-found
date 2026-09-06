@@ -76,6 +76,7 @@ export default function MatchesScreen({ me }) {
             <p className="card-title">
               {m.lost_title} ↔ {m.found_title}
               {m.unread_count > 0 && <span className="badge">{m.unread_count}</span>}
+              {m.completed_at && <span className="tag done" style={{ marginLeft: 8 }}>거래 완료</span>}
             </p>
             <p className="meta">{roles}</p>
             <p className="meta">
@@ -108,7 +109,10 @@ export default function MatchesScreen({ me }) {
                 상대 게시물 보기
               </button>
               <button className="primary sm" onClick={() => openChat(m.match_id)}>채팅하기</button>
-              <button className="danger sm" onClick={() => setCancelId(m.match_id)}>매칭 취소</button>
+              {/* 완료된 매칭은 되돌릴 수 없으므로 취소 버튼을 감춘다(서버도 거부한다). */}
+              {!m.completed_at && (
+                <button className="danger sm" onClick={() => setCancelId(m.match_id)}>매칭 취소</button>
+              )}
             </div>
           </div>
         );

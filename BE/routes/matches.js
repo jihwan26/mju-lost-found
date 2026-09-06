@@ -36,4 +36,14 @@ router.delete('/matches/:id', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/**
+ * "돌려받았어요" -- 되찾음 마무리.
+ * 양쪽이 다 눌러야 완료되고, 완료되는 순간 양쪽 게시물이 마감되며 명지도가 오른다.
+ */
+router.post('/matches/:id/confirm', wrap(async (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  res.json(db.confirmDeal(intOrNull(req.params.id), user.id));
+}));
+
 export default router;

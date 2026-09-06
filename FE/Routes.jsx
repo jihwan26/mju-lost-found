@@ -9,6 +9,7 @@ import ChatsScreen from './screens/ChatsScreen.jsx';
 import ChatRoomScreen from './screens/ChatRoomScreen.jsx';
 import NotificationsScreen from './screens/NotificationsScreen.jsx';
 import AdminScreen from './screens/AdminScreen.jsx';
+import ProfileScreen from './screens/ProfileScreen.jsx';
 
 /**
  * 경로 문자열 -> 화면.
@@ -22,6 +23,7 @@ import AdminScreen from './screens/AdminScreen.jsx';
  *   /chats/5          채팅방
  *   /notifications    알림
  *   /admin            관리자
+ *   /me               내 정보
  *
  * 알 수 없는 경로는 홈으로 가는 안내를 띄운다.
  */
@@ -46,6 +48,7 @@ export default function Routes({ path, me, refreshMe }) {
   }
   if (head === 'notifications') return <NotificationsScreen onCountsChanged={refreshMe} />;
   if (head === 'admin') return <AdminScreen />;
+  if (head === 'me') return <ProfileScreen me={me} onRefresh={refreshMe} />;
 
   return (
     <Empty>

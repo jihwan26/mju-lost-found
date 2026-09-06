@@ -1,4 +1,5 @@
 import { navigate } from '../navigation.js';
+import TrustScore from './TrustScore.jsx';
 
 /**
  * 상단 헤더 -- 로고 줄 + 메뉴 줄 2단.
@@ -27,9 +28,12 @@ export default function TopBar({ me, path, onLogout }) {
           <div className="logo" onClick={() => navigate('/')}>
             명지 <span>분실물</span>
           </div>
-          <button className="ghost sm" onClick={onLogout} title={me.user.email}>
-            {me.user.nickname} · 로그아웃
-          </button>
+          <div className="topbar-user">
+            <button className="ghost sm" onClick={() => navigate('/me')} title={me.user.email}>
+              {me.user.nickname} <TrustScore score={me.user.trustScore} showLabel={false} />
+            </button>
+            <button className="ghost sm" onClick={onLogout}>로그아웃</button>
+          </div>
         </div>
         <nav className="nav">
           {items.map((it) => (

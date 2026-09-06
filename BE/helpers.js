@@ -4,6 +4,7 @@
  */
 import fs from 'node:fs';
 import * as db from './db.js';
+import { uploadedFilesOf } from './upload.js';
 
 /**
  * 라우트 핸들러를 감싸서 던져진 예외를 HTTP 응답으로 바꾼다.
@@ -17,7 +18,10 @@ export const wrap = (handler) => async (req, res) => {
     // multer 는 라우터보다 먼저 실행되므로, 그 뒤 검증에서 걸리면 파일은 이미
     // 디스크에 저장된 상태다. 게시물이 안 만들어졌으면 그 이미지는 아무도
     // 참조하지 않으므로 여기서 지운다 (안 그러면 실패할 때마다 쓰레기가 쌓인다).
-    if (req.file) fs.promises.unlink(req.file.path).catch(() => {});
+    // 사진 여러 장(req.files)도 함께 처리한다.
+    for (const file of uploadedFilesOf(req)) {
+      fs.promises.unlink(file.path).catch(() => {});
+    }
     const status = e.status || 500;
     if (status === 500) console.error('[api]', req.method, req.path, e);
     res.status(status).json({ error: e.message || '서버 오류가 발생했습니다.' });

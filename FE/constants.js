@@ -47,6 +47,8 @@ export const NOTIFICATION_TYPE_LABELS = {
   post_deleted: '게시물 삭제 제재',
   message_hidden: '메시지 숨김 제재',
   user_suspended: '계정 정지',
+  comment: '새 댓글',
+  trust: '명지도 변동',
 };
 
 // ---------------------------------------------------------------- 관리자

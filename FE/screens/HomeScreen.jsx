@@ -17,6 +17,7 @@ export default function HomeScreen({ me }) {
     { path: '/matches', title: '내 매칭', desc: '확정한 AI 매칭 결과를 확인하고 필요하면 취소할 수 있습니다.', count: unreadMsg },
     { path: '/chats', title: '내 채팅', desc: '참여 중인 채팅방을 최근 대화 순으로 확인할 수 있습니다.', count: unreadMsg },
     { path: '/notifications', title: '알림', desc: '새 메시지·매칭·신고 처리 결과 등의 알림을 확인할 수 있습니다.', count: unreadNotif },
+    { path: '/me', title: '내 정보', desc: '닉네임과 명지도를 확인하고 닉네임을 바꿀 수 있습니다.' },
     // 관리자 항목은 관리자에게만 보인다. 다만 이걸 숨기는 것 자체가 보안 경계는
     // 아니며, 실제 검증은 서버의 requireAdminUser + db 계층에서 다시 이루어진다.
     ...(me.user.isAdmin

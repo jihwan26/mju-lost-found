@@ -541,6 +541,146 @@ button.sm { padding: 5px 11px; font-size: 13px; }
   border-top: 1px solid var(--rule);
 }
 
+/* ------------------------------------------------------------ 명지도 */
+
+.trust {
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.trust-high { color: var(--done); }
+.trust-mid { color: var(--accent); }
+.trust-low { color: var(--danger); }
+
+/* ------------------------------------------------------------ 사진 */
+
+/* 목록 썸네일 위의 "+N" (사진이 더 있다는 표시) */
+.thumb-wrap { position: relative; flex-shrink: 0; line-height: 0; }
+.thumb-more {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 5px;
+  border-radius: 2px;
+  background: rgba(26, 26, 24, 0.75);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.gallery { margin-bottom: 14px; }
+.gallery-thumbs { display: flex; gap: 8px; margin-top: -6px; }
+.gallery-thumb {
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+  line-height: 0;
+  background: none;
+  cursor: pointer;
+}
+.gallery-thumb.active { border-color: var(--accent); outline: 1px solid var(--accent); }
+.gallery-thumb img { width: 56px; height: 56px; object-fit: cover; }
+
+/* ------------------------------------------------------------ 채팅 추가분 */
+
+/* 채팅방 상단 "이 대화가 걸린 물건" 카드 */
+.subject-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.subject-bar:hover { border-color: var(--rule-strong); border-left-color: var(--accent); }
+.subject-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.subject-body { flex: 1; min-width: 0; }
+.subject-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble { cursor: pointer; }
+.bubble-image {
+  display: block;
+  max-width: 220px;
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+}
+
+.reactions { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.reaction {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 18px;
+}
+.reaction.mine { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.reaction-bar {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 3px 5px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  width: fit-content;
+}
+.reaction-pick {
+  border: 0;
+  background: none;
+  padding: 2px 5px;
+  font-size: 16px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.reaction-pick:hover { background: var(--surface-2); border-radius: 50%; }
+
+/* ------------------------------------------------------------ 관리자 통계 */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.stat { background: var(--surface); padding: 14px 16px; }
+.stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.stat-label { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+
+/* ------------------------------------------------------------ 상단바 사용자 */
+
+.topbar-user { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
 .spinner-note {
   display: flex;
   align-items: center;

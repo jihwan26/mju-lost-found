@@ -128,7 +128,7 @@ export default function BoardList({ kind, me }) {
                 <div className="list">
                   {posts.map((p) => (
                     <div className="list-item" key={p.id}>
-                      <Thumb src={p.image_url} />
+                      <Thumb src={p.images?.[0]} count={p.images?.length} />
                       <div className="list-body">
                         <p className="item-title">{p.title}</p>
                         <p className="meta">
@@ -138,6 +138,8 @@ export default function BoardList({ kind, me }) {
                         <p className="faint">
                           {p.author_nickname}<span className="sep">·</span>
                           <StatusPill status={p.status} />
+                          <span className="sep">·</span>조회 {p.view_count ?? 0}
+                          {p.comment_count > 0 && <><span className="sep">·</span>댓글 {p.comment_count}</>}
                         </p>
                       </div>
                       <div className="list-actions">

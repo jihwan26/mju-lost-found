@@ -4,6 +4,7 @@ import Banner from '../components/Banner.jsx';
 import Empty from '../components/Empty.jsx';
 import Loading from '../components/Loading.jsx';
 import AdminReportCard from './AdminReportCard.jsx';
+import AdminStats from './AdminStats.jsx';
 
 const PAGE_SIZE = 20;
 
@@ -40,6 +41,12 @@ export default function AdminScreen() {
         <p>신고된 게시물·메시지·사용자를 검토하고 처리합니다. 처리 후에는 되돌릴 수 없습니다.</p>
       </div>
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
+
+      <AdminStats />
+
+      <div className="section">
+        <h3>신고 목록</h3>
+      </div>
 
       <div className="card">
         <div className="row">

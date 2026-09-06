@@ -180,7 +180,13 @@ export function buildMeResponse(req) {
     allowedDomain: ALLOWED_EMAIL_DOMAIN,
     categories: db.CATEGORIES,
     reportReasons: db.REPORT_REASONS,
-    nicknameRules: { min: db.NICKNAME_MIN_LENGTH, max: db.NICKNAME_MAX_LENGTH },
+    nicknameRules: {
+      min: db.NICKNAME_MIN_LENGTH,
+      max: db.NICKNAME_MAX_LENGTH,
+      changeDays: db.NICKNAME_CHANGE_DAYS,
+    },
+    maxPostImages: db.MAX_POST_IMAGES,
+    reactions: db.ALLOWED_REACTIONS,
   };
   if (!user) return { ...base, loggedIn: false, user: null };
 
@@ -205,6 +211,9 @@ export function buildMeResponse(req) {
       nickname: user.nickname,
       isAdmin: Boolean(user.is_admin),
       isSuspended: db.isUserSuspended(user.id),
+      trustScore: user.trust_score,
+      // 지금 닉네임을 바꿀 수 있는지 + 못 바꾸면 며칠 남았는지
+      nicknameChange: user.nickname ? db.nicknameChangeStatus(user.id) : { canChange: false, daysLeft: 0 },
     },
     counts: {
       unreadMessages: user.nickname ? db.countUnreadMessagesByUser(user.id) : 0,

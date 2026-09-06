@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { get, post, qs } from '../api.js';
+import { get, post, qs, sendForm } from '../api.js';
 import { navigate } from '../navigation.js';
 import Banner from '../components/Banner.jsx';
 import Loading from '../components/Loading.jsx';
 import ReportButton from '../components/ReportButton.jsx';
+import TrustScore from '../components/TrustScore.jsx';
+import ConfirmModal from '../components/ConfirmModal.jsx';
 
 /**
  * 채팅방 (원본 pages/5_채팅.py).
@@ -18,6 +20,10 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // 이모지 반응 막대를 펼친 메시지 id (한 번에 하나만 열린다)
+  const [reactingId, setReactingId] = useState(null);
+  const [confirmingDeal, setConfirmingDeal] = useState(false);
+  const fileRef = useRef(null);
   const logRef = useRef(null);
   const shouldScrollRef = useRef(true);
   // 지금 화면에 있는 메시지의 사본. refresh 가 최신 목록을 "지금 당장" 읽어야 하는데,
@@ -136,6 +142,56 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
     }
   }
 
+  /** 사진 전송. 파일이 섞이므로 JSON 이 아니라 FormData 로 보낸다. */
+  async function sendImage(file) {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      if (draft.trim()) fd.append('content', draft.trim());
+      fd.append('image', file);
+      await sendForm('/api/chats/' + roomId + '/messages', 'POST', fd);
+      setDraft('');
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+      // 같은 파일을 연속으로 고를 수 있도록 입력값을 비운다.
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  /** 이모지 반응 토글. 누른 즉시 서버에 반영하고 목록을 새로 받는다. */
+  async function react(messageId, emoji) {
+    setError('');
+    try {
+      await post('/api/messages/' + messageId + '/reactions', { emoji });
+      setReactingId(null);
+      await refresh();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  /** "돌려받았어요" -- 양쪽이 다 눌러야 완료된다. */
+  async function confirmDeal() {
+    setBusy(true);
+    setError('');
+    try {
+      await post('/api/matches/' + room.deal.matchId + '/confirm', {});
+      setConfirmingDeal(false);
+      setRoom(await get('/api/chats/' + roomId));
+      onCountsChanged();
+    } catch (e) {
+      setError(e.message);
+      setConfirmingDeal(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (error && !room) return <Banner kind="error">{error}</Banner>;
   if (!room) return <Loading />;
 
@@ -146,21 +202,57 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
       <div className="page-head" style={{ marginTop: 12 }}>
         <h1>{room.otherNickname}님과의 대화</h1>
         <p>
-          {room.myPostLabel} · {room.otherPostLabel}
-          {room.score !== null && <> · <span className="mono-score">AI 유사도 점수: {room.score.toFixed(2)}</span></>}
+          <TrustScore score={room.otherTrustScore} />
+          {room.score !== null && (
+            <><span className="sep">·</span><span className="mono-score">유사도 {room.score.toFixed(2)}</span></>
+          )}
         </p>
       </div>
 
-      {room.otherUserId && (
-        <div style={{ marginBottom: 12 }}>
+      {/* 무슨 물건 때문에 대화 중인지 잊지 않도록 상단에 붙여 둔다. */}
+      {room.subject && (
+        <div
+          className="subject-bar"
+          onClick={() => navigate('/' + room.subject.kind + '/' + room.subject.id)}
+        >
+          {room.subject.image && <img className="subject-thumb" src={room.subject.image} alt="" />}
+          <div className="subject-body">
+            <p className="subject-title">{room.subject.title}</p>
+            <p className="faint">
+              {room.subject.kind === 'lost' ? '찾아요' : '찾았어요'}
+              <span className="sep">·</span>{room.subject.status}
+            </p>
+          </div>
+          <span className="faint">게시물 보기 →</span>
+        </div>
+      )}
+
+      <div className="row tight" style={{ marginBottom: 14, alignItems: 'center' }}>
+        {room.otherUserId && (
           <ReportButton
             targetType="user"
             targetId={room.otherUserId}
             label={`${room.otherNickname}님 신고`}
             reasons={me.reportReasons}
           />
-        </div>
-      )}
+        )}
+        {room.deal && (
+          room.deal.completed
+            ? <span className="status done">거래 완료</span>
+            : (
+              <button
+                className="primary sm"
+                onClick={() => setConfirmingDeal(true)}
+                disabled={room.deal.iConfirmed}
+              >
+                {room.deal.iConfirmed ? '상대 확인 대기 중' : '돌려받았어요'}
+              </button>
+            )
+        )}
+        {room.deal && !room.deal.completed && room.deal.otherConfirmed && !room.deal.iConfirmed && (
+          <span className="faint">상대가 이미 확인했어요</span>
+        )}
+      </div>
 
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
 
@@ -180,7 +272,45 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
           return (
             <div className={`msg ${mine ? 'mine' : ''}`} key={m.id}>
               {!mine && <span className="faint">{m.sender_nickname}</span>}
-              <div className="bubble">{m.content}</div>
+              <div className="bubble" onClick={() => setReactingId(reactingId === m.id ? null : m.id)}>
+                {m.image_url && (
+                  <a
+                    href={m.image_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <img className="bubble-image" src={m.image_url} alt="" />
+                  </a>
+                )}
+                {/* 사진만 보낸 메시지는 content 가 '[사진]' 이라 굳이 다시 쓰지 않는다. */}
+                {!(m.image_url && m.content === '[사진]') && <span>{m.content}</span>}
+              </div>
+
+              {m.reactions?.length > 0 && (
+                <div className="reactions">
+                  {m.reactions.map((rx) => (
+                    <button
+                      key={rx.emoji}
+                      className={`reaction ${rx.mine ? 'mine' : ''}`}
+                      onClick={() => react(m.id, rx.emoji)}
+                    >
+                      {rx.emoji} {rx.count}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {reactingId === m.id && (
+                <div className="reaction-bar">
+                  {me.reactions.map((emoji) => (
+                    <button key={emoji} className="reaction-pick" onClick={() => react(m.id, emoji)}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="msg-meta">
                 <span>{m.created_at}</span>
                 {mine && <span>{m.read_at ? '읽음' : '안 읽음'}</span>}
@@ -200,6 +330,16 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
 
       <form className="composer" onSubmit={submit}>
         <input
+          ref={fileRef}
+          type="file"
+          accept=".jpg,.jpeg,.png"
+          style={{ display: 'none' }}
+          onChange={(e) => sendImage(e.target.files[0])}
+        />
+        <button type="button" className="sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+          사진
+        </button>
+        <input
           type="text"
           value={draft}
           placeholder="메시지를 입력하세요"
@@ -207,6 +347,17 @@ export default function ChatRoomScreen({ roomId, me, onCountsChanged }) {
         />
         <button className="primary" type="submit" disabled={busy || !draft.trim()}>보내기</button>
       </form>
+
+      {confirmingDeal && (
+        <ConfirmModal
+          title="돌려받았어요"
+          message="물건을 무사히 주고받으셨나요? 상대도 확인하면 거래가 완료되고 양쪽 명지도가 올라갑니다."
+          confirmLabel="네, 받았습니다"
+          busy={busy}
+          onCancel={() => setConfirmingDeal(false)}
+          onConfirm={confirmDeal}
+        />
+      )}
     </>
   );
 }

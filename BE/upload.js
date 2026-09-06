@@ -35,3 +35,16 @@ export const upload = multer({
 
 /** 저장된 파일 -> 브라우저가 부를 수 있는 경로. 파일이 없으면 null. */
 export const imageUrlFor = (file) => (file ? `/uploads/${file.filename}` : null);
+
+/** upload.array() 로 받은 파일 목록 -> 경로 배열. 파일이 없으면 빈 배열. */
+export const imageUrlsFor = (files) => (files || []).map((f) => `/uploads/${f.filename}`);
+
+/**
+ * 업로드가 성공한 뒤 요청 처리에 실패했을 때 디스크에 남은 파일을 지운다.
+ * helpers.js 의 wrap() 이 단일 파일(req.file)만 지우던 것을, 여러 장(req.files)까지
+ * 처리하도록 이 헬퍼로 모아 뒀다.
+ */
+export const uploadedFilesOf = (req) => {
+  if (req.files?.length) return req.files;
+  return req.file ? [req.file] : [];
+};

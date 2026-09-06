@@ -87,4 +87,15 @@ router.post('/me/nickname', wrap(async (req, res) => {
   res.json(auth.buildMeResponse(req));
 }));
 
+/**
+ * 닉네임 변경(최초 설정 이후). 30일에 한 번만 가능하며, 남은 일수 계산과
+ * 실제 변경 모두 db 계층이 판단한다.
+ */
+router.patch('/me/nickname', wrap(async (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  db.changeNickname(user.id, req.body?.nickname);
+  res.json(auth.buildMeResponse(req));
+}));
+
 export default router;

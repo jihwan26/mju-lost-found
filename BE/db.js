@@ -46,6 +46,7 @@ export const REPORT_STATUSES = new Set(['pending', 'dismissed', 'actioned']);
 export const MODERATION_ACTION_TYPES = new Set(['delete_post', 'hide_message', 'suspend_user']);
 export const NOTIFICATION_TYPES = new Set([
   'message', 'match', 'report_processed', 'post_deleted', 'message_hidden', 'user_suspended',
+  'comment', 'trust',
 ]);
 
 // Report.target_type 별로 허용되는 단 하나의 action_type.
@@ -84,9 +85,13 @@ CREATE TABLE IF NOT EXISTS User (
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     nickname TEXT,
+    -- 닉네임을 마지막으로 바꾼 시각. NULL 이면 아직 한 번도 안 바꾼 것.
+    nickname_changed_at TEXT,
     is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
     is_suspended INTEGER NOT NULL DEFAULT 0 CHECK (is_suspended IN (0, 1)),
     suspended_until TEXT,
+    -- 명지도(신뢰도). 모두 50에서 시작해 0~100 사이에서만 움직인다.
+    trust_score REAL NOT NULL DEFAULT 50.0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -99,7 +104,12 @@ CREATE TABLE IF NOT EXISTS LostPost (
     location TEXT NOT NULL,
     lost_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT '찾는 중' CHECK (status IN ('찾는 중', '찾음')),
+    -- 대표 이미지 1장. image_urls 의 첫 번째와 같은 값을 넣어 두어, 사진 여러 장을
+    -- 지원하기 전에 쓰던 코드/데이터가 그대로 동작하게 한다.
     image_url TEXT,
+    -- 사진 전체 목록(JSON 배열 문자열). 최대 3장.
+    image_urls TEXT,
+    view_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -113,7 +123,12 @@ CREATE TABLE IF NOT EXISTS FoundPost (
     location TEXT NOT NULL,
     found_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT '보관 중' CHECK (status IN ('보관 중', '완료')),
+    -- 대표 이미지 1장. image_urls 의 첫 번째와 같은 값을 넣어 두어, 사진 여러 장을
+    -- 지원하기 전에 쓰던 코드/데이터가 그대로 동작하게 한다.
     image_url TEXT,
+    -- 사진 전체 목록(JSON 배열 문자열). 최대 3장.
+    image_urls TEXT,
+    view_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -123,6 +138,11 @@ CREATE TABLE IF NOT EXISTS "Match" (
     lost_post_id INTEGER NOT NULL REFERENCES LostPost(id) ON DELETE CASCADE,
     found_post_id INTEGER NOT NULL REFERENCES FoundPost(id) ON DELETE CASCADE,
     score REAL NOT NULL,
+    -- '돌려받았어요' 를 양쪽이 각각 누른 시각. 둘 다 차면 completed_at 이 찍히고
+    -- 그때 한 번만 명지도가 오른다.
+    lost_confirmed_at TEXT,
+    found_confirmed_at TEXT,
+    completed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (lost_post_id, found_post_id)
 );
@@ -145,6 +165,8 @@ CREATE TABLE IF NOT EXISTS Message (
     chat_room_id INTEGER NOT NULL REFERENCES ChatRoom(id) ON DELETE CASCADE,
     sender_user_id INTEGER NOT NULL REFERENCES User(id),
     content TEXT NOT NULL,
+    -- 사진 메시지. 사진만 보내도 content 는 '[사진]' 으로 채운다(목록 미리보기용).
+    image_url TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     read_at TEXT,
     hidden_at TEXT,
@@ -183,7 +205,8 @@ CREATE TABLE IF NOT EXISTS Notification (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES User(id),
     type TEXT NOT NULL CHECK (
-        type IN ('message', 'match', 'report_processed', 'post_deleted', 'message_hidden', 'user_suspended')
+        type IN ('message', 'match', 'report_processed', 'post_deleted', 'message_hidden',
+                 'user_suspended', 'comment', 'trust')
     ),
     title TEXT NOT NULL,
     content TEXT NOT NULL,
@@ -194,7 +217,42 @@ CREATE TABLE IF NOT EXISTS Notification (
     UNIQUE (user_id, type, related_type, related_id)
 );
 
+-- 게시글 조회 기록. 같은 사람이 여러 번 봐도 조회수는 한 번만 오르게 하는 근거다.
+-- post_kind + post_id 로 두 게시판을 한 테이블에서 다룬다(각 테이블의 id 가
+-- 서로 독립된 시퀀스라 숫자만으로는 구분되지 않기 때문).
+CREATE TABLE IF NOT EXISTS PostView (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_kind TEXT NOT NULL CHECK (post_kind IN ('lost', 'found')),
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES User(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (post_kind, post_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS Comment (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_kind TEXT NOT NULL CHECK (post_kind IN ('lost', 'found')),
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES User(id),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 메시지 이모지 반응. 한 사람이 같은 메시지에 같은 이모지를 두 번 달 수 없다
+-- (다시 누르면 취소되는 토글 동작을 UNIQUE 로 뒷받침한다).
+CREATE TABLE IF NOT EXISTS MessageReaction (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL REFERENCES Message(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES User(id),
+    emoji TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (message_id, user_id, emoji)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_nickname ON User(nickname);
+CREATE INDEX IF NOT EXISTS idx_postview_post ON PostView(post_kind, post_id);
+CREATE INDEX IF NOT EXISTS idx_comment_post ON Comment(post_kind, post_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_reaction_message ON MessageReaction(message_id);
 CREATE INDEX IF NOT EXISTS idx_lostpost_user_id ON LostPost(user_id);
 CREATE INDEX IF NOT EXISTS idx_foundpost_user_id ON FoundPost(user_id);
 CREATE INDEX IF NOT EXISTS idx_match_lost_post_id ON "Match"(lost_post_id);
@@ -215,6 +273,84 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(SCHEMA);
+
+/**
+ * 이미 만들어진 DB에 새 컬럼을 덧붙인다.
+ *
+ * 위의 CREATE TABLE 은 IF NOT EXISTS 라서, 이미 테이블이 있는 DB(= 배포된 서버)에는
+ * 아무 일도 하지 않는다. 그래서 나중에 추가된 컬럼은 여기서 따로 붙여 줘야 한다.
+ * SQLite 의 ALTER TABLE ADD COLUMN 은 테이블을 다시 만들지 않아 빠르고 안전하며,
+ * 이 함수는 몇 번 실행해도 결과가 같다(이미 있으면 건너뛴다).
+ */
+function runMigrations() {
+  const columns = (table) => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+  const addColumn = (table, name, definition) => {
+    if (!columns(table).has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  };
+
+  addColumn('User', 'nickname_changed_at', 'TEXT');
+  addColumn('User', 'trust_score', 'REAL NOT NULL DEFAULT 50.0');
+
+  for (const table of ['LostPost', 'FoundPost']) {
+    addColumn(table, 'image_urls', 'TEXT');
+    addColumn(table, 'view_count', 'INTEGER NOT NULL DEFAULT 0');
+  }
+
+  addColumn('"Match"', 'lost_confirmed_at', 'TEXT');
+  addColumn('"Match"', 'found_confirmed_at', 'TEXT');
+  addColumn('"Match"', 'completed_at', 'TEXT');
+
+  addColumn('Message', 'image_url', 'TEXT');
+
+  // Notification.type 의 CHECK 제약에는 'comment'/'trust' 가 없던 시절이 있다.
+  // CHECK 는 ALTER 로 못 고치므로, 새 타입이 실제로 들어가는지 시험해 보고
+  // 막히면 그때만 테이블을 다시 만든다(평소에는 아무 일도 하지 않는다).
+  const acceptsNewTypes = (() => {
+    try {
+      db.exec('SAVEPOINT check_notification_type');
+      db.prepare(`INSERT INTO Notification (user_id, type, title, content) VALUES (0, 'comment', 'x', 'x')`).run();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      db.exec('ROLLBACK TO check_notification_type');
+      db.exec('RELEASE check_notification_type');
+    }
+  })();
+
+  if (!acceptsNewTypes) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE Notification_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL REFERENCES User(id),
+          type TEXT NOT NULL CHECK (
+              type IN ('message', 'match', 'report_processed', 'post_deleted', 'message_hidden',
+                       'user_suspended', 'comment', 'trust')
+          ),
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          related_type TEXT,
+          related_id INTEGER,
+          is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (user_id, type, related_type, related_id)
+      );
+      INSERT INTO Notification_new
+        SELECT id, user_id, type, title, content, related_type, related_id, is_read, created_at
+        FROM Notification;
+      DROP TABLE Notification;
+      ALTER TABLE Notification_new RENAME TO Notification;
+      CREATE INDEX IF NOT EXISTS idx_notification_user_read_created
+        ON Notification(user_id, is_read, created_at DESC);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+}
+
+runMigrations();
 
 export { db };
 
@@ -299,6 +435,67 @@ export function setInitialNickname(userId, nicknameRaw) {
   }
 }
 
+export const NICKNAME_CHANGE_DAYS = 30;
+
+/**
+ * 처음 설정 이후의 닉네임 변경. 30일에 한 번만 가능하다.
+ *
+ * "언제 또 바꿀 수 있는지"는 nickname_changed_at 하나로만 판단한다. 이 값이 NULL 이면
+ * (= 최초 설정 후 아직 한 번도 바꾼 적이 없으면) 바로 바꿀 수 있다.
+ * 남은 기간 계산과 갱신을 한 UPDATE 안에서 처리해, 두 번 눌러도 두 번 바뀌지 않는다.
+ */
+export function changeNickname(userId, nicknameRaw) {
+  const user = getUserById(userId);
+  if (!user) throw new ValidationError(`User ${userId} not found`);
+  if (user.nickname === null) throw new ValidationError('먼저 닉네임을 설정해주세요.');
+
+  const nickname = String(nicknameRaw ?? '').trim();
+  if (nickname === user.nickname) throw new ValidationError('지금 쓰고 있는 닉네임입니다.');
+  if (nickname.length < NICKNAME_MIN_LENGTH || nickname.length > NICKNAME_MAX_LENGTH) {
+    throw new ValidationError(`닉네임은 ${NICKNAME_MIN_LENGTH}~${NICKNAME_MAX_LENGTH}자여야 합니다.`);
+  }
+  if (!NICKNAME_RE.test(nickname)) {
+    throw new ValidationError('닉네임은 한글/영문/숫자만 사용할 수 있습니다.');
+  }
+
+  const status = nicknameChangeStatus(userId);
+  if (!status.canChange) {
+    throw new ValidationError(`닉네임은 ${NICKNAME_CHANGE_DAYS}일에 한 번만 바꿀 수 있습니다. (${status.daysLeft}일 남음)`);
+  }
+
+  try {
+    const info = db.prepare(`
+      UPDATE User SET nickname = ?, nickname_changed_at = datetime('now')
+      WHERE id = ?
+        AND (nickname_changed_at IS NULL
+             OR nickname_changed_at <= datetime('now', ?))
+    `).run(nickname, userId, `-${NICKNAME_CHANGE_DAYS} days`);
+    if (info.changes === 0) {
+      throw new ValidationError(`닉네임은 ${NICKNAME_CHANGE_DAYS}일에 한 번만 바꿀 수 있습니다.`);
+    }
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new ValidationError('이미 사용 중인 닉네임입니다.');
+    throw e;
+  }
+}
+
+/** 지금 닉네임을 바꿀 수 있는지 + 못 바꾸면 며칠 남았는지. */
+export function nicknameChangeStatus(userId) {
+  const user = getUserById(userId);
+  if (!user || user.nickname === null) return { canChange: false, daysLeft: 0 };
+  if (!user.nickname_changed_at) return { canChange: true, daysLeft: 0 };
+
+  // 남은 일수를 소수까지 그대로 받아서 판단한다. 정수로 잘라 버리면 "0.5일 남음"과
+  // "0.5일 지남"이 똑같이 0이 되어, 기한이 지났는데도 잠긴 것처럼 보인다.
+  const row = db.prepare(`
+    SELECT julianday(datetime(?, ?)) - julianday(datetime('now')) AS days_remaining
+  `).get(user.nickname_changed_at, `+${NICKNAME_CHANGE_DAYS} days`);
+
+  const remaining = row.days_remaining ?? 0;
+  if (remaining <= 0) return { canChange: true, daysLeft: 0 };
+  return { canChange: false, daysLeft: Math.ceil(remaining) };
+}
+
 // ------------------------------------------------------- LostPost / FoundPost
 //
 // 파이썬 원본은 lost/found 용 함수를 미러링해서 두 벌 갖고 있었다.
@@ -315,28 +512,56 @@ export function postKindConfig(kind) {
   return cfg;
 }
 
+export const MAX_POST_IMAGES = 3;
+
+/**
+ * DB 행을 화면이 쓰기 좋은 모양으로 다듬는다.
+ * image_url(대표 1장)과 image_urls(JSON 배열)를 하나의 images 배열로 합쳐 주므로,
+ * 사진이 1장이던 시절에 저장된 글도 여러 장인 글과 똑같이 다룰 수 있다.
+ */
+function decoratePost(row, kind) {
+  if (!row) return null;
+  let images = [];
+  if (row.image_urls) {
+    try {
+      const parsed = JSON.parse(row.image_urls);
+      if (Array.isArray(parsed)) images = parsed.filter((u) => typeof u === 'string' && u);
+    } catch {
+      // 손상된 값이면 아래 image_url 로만 채운다 -- 목록 전체가 깨지는 것보다 낫다.
+    }
+  }
+  if (!images.length && row.image_url) images = [row.image_url];
+  return { ...row, kind, images };
+}
+
 export function createPost(kind, {
-  userId, title, description, category, location, at, imageUrl = null, status = null,
+  userId, title, description, category, location, at, imageUrls = [], status = null,
 }) {
   const cfg = postKindConfig(kind);
   requireNotSuspended(userId);
   const finalStatus = status ?? cfg.defaultStatus;
   if (!cfg.statuses.has(finalStatus)) throw new ValidationError(`invalid status: ${finalStatus}`);
   validateDatetime(at, cfg.dateField);
+
+  const images = (imageUrls || []).slice(0, MAX_POST_IMAGES);
   return db.prepare(
-    `INSERT INTO ${cfg.table} (user_id, title, description, category, location, ${cfg.dateField}, image_url, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(userId, title, description, category, location, at, imageUrl, finalStatus).lastInsertRowid;
+    `INSERT INTO ${cfg.table}
+       (user_id, title, description, category, location, ${cfg.dateField}, image_url, image_urls, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    userId, title, description, category, location, at,
+    images[0] ?? null, images.length ? JSON.stringify(images) : null, finalStatus
+  ).lastInsertRowid;
 }
 
 export function getPost(kind, postId) {
   const cfg = postKindConfig(kind);
   const row = db.prepare(
-    `SELECT p.*, u.nickname AS author_nickname
+    `SELECT p.*, u.nickname AS author_nickname, u.trust_score AS author_trust_score
      FROM ${cfg.table} p JOIN User u ON u.id = p.user_id
      WHERE p.id = ?`
   ).get(postId) ?? null;
-  return row ? { ...row, kind } : null;
+  return decoratePost(row, kind);
 }
 
 /** 키워드/카테고리/상태 필터. 셋 다 비우면 전체 목록이 된다. */
@@ -352,18 +577,106 @@ export function searchPosts(kind, { keyword = '', category = null, status = null
   if (status) { conditions.push('p.status = ?'); params.push(status); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db.prepare(
-    `SELECT p.*, u.nickname AS author_nickname
+    `SELECT p.*, u.nickname AS author_nickname, u.trust_score AS author_trust_score,
+            (SELECT COUNT(*) FROM Comment c WHERE c.post_kind = ? AND c.post_id = p.id) AS comment_count
      FROM ${cfg.table} p JOIN User u ON u.id = p.user_id
      ${where}
      ORDER BY p.created_at DESC`
-  ).all(...params);
-  return rows.map((r) => ({ ...r, kind }));
+  ).all(kind, ...params);
+  return rows.map((r) => decoratePost(r, kind));
 }
 
 export function listPostsByUser(kind, userId) {
   const cfg = postKindConfig(kind);
   return db.prepare(`SELECT * FROM ${cfg.table} WHERE user_id = ? ORDER BY created_at DESC`)
-    .all(userId).map((r) => ({ ...r, kind }));
+    .all(userId).map((r) => decoratePost(r, kind));
+}
+
+/**
+ * 조회수 1 올리기. 같은 사람이 몇 번을 봐도 한 번만 오르고, 작성자 본인은 세지 않는다.
+ * PostView 의 UNIQUE(post_kind, post_id, user_id) 가 "1인 1회"를 실제로 보장하므로,
+ * 동시에 두 번 눌려도 중복으로 오르지 않는다.
+ * 반환값은 (올랐든 안 올랐든) 현재 조회수다.
+ */
+export function bumpViewCount(kind, postId, requestingUserId) {
+  const cfg = postKindConfig(kind);
+  const post = getPost(kind, postId);
+  if (!post) throw new ValidationError('게시물을 찾을 수 없습니다.');
+  if (post.user_id === requestingUserId) return post.view_count;
+
+  try {
+    return db.transaction(() => {
+      db.prepare('INSERT INTO PostView (post_kind, post_id, user_id) VALUES (?, ?, ?)')
+        .run(kind, postId, requestingUserId);
+      db.prepare(`UPDATE ${cfg.table} SET view_count = view_count + 1 WHERE id = ?`).run(postId);
+      return db.prepare(`SELECT view_count FROM ${cfg.table} WHERE id = ?`).get(postId).view_count;
+    })();
+  } catch (e) {
+    if (isUniqueViolation(e)) return post.view_count; // 이미 본 사람
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- Comment
+
+export const COMMENT_MAX_LENGTH = 500;
+
+/** 게시글 댓글 목록(오래된순). 작성자 닉네임을 조인해 N+1 조회를 피한다. */
+export function listComments(kind, postId) {
+  postKindConfig(kind);
+  return db.prepare(`
+    SELECT c.id, c.user_id, c.content, c.created_at,
+           u.nickname AS author_nickname, u.trust_score AS author_trust_score
+    FROM Comment c JOIN User u ON u.id = c.user_id
+    WHERE c.post_kind = ? AND c.post_id = ?
+    ORDER BY c.created_at ASC, c.id ASC
+  `).all(kind, postId);
+}
+
+/**
+ * 댓글 작성. 게시글 작성자에게 'comment' 알림이 같은 트랜잭션으로 생성된다
+ * (자기 글에 자기가 단 댓글은 알리지 않는다).
+ */
+export function createComment(kind, postId, requestingUserId, contentRaw) {
+  postKindConfig(kind);
+  requireNotSuspended(requestingUserId);
+  const post = getPost(kind, postId);
+  if (!post) throw new ValidationError('게시물을 찾을 수 없습니다.');
+
+  const content = String(contentRaw ?? '').trim();
+  if (!content) throw new ValidationError('댓글 내용을 입력해주세요.');
+  if (content.length > COMMENT_MAX_LENGTH) {
+    throw new ValidationError(`댓글은 ${COMMENT_MAX_LENGTH}자까지 쓸 수 있습니다.`);
+  }
+
+  return db.transaction(() => {
+    const id = db.prepare('INSERT INTO Comment (post_kind, post_id, user_id, content) VALUES (?, ?, ?, ?)')
+      .run(kind, postId, requestingUserId, content).lastInsertRowid;
+    if (post.user_id !== requestingUserId) {
+      const writer = getUserById(requestingUserId);
+      insertNotification(post.user_id, 'comment', '새 댓글이 달렸습니다',
+        `${writer.nickname}님이 '${post.title}'에 댓글을 남겼습니다.`, 'comment', id);
+    }
+    return id;
+  })();
+}
+
+/**
+ * 댓글이 어느 게시물에 달렸는지. 알림에서 "그 글로 이동"할 때 쓴다.
+ * 댓글이 이미 지워졌으면 null.
+ */
+export function getCommentTarget(commentId) {
+  return db.prepare('SELECT post_kind, post_id FROM Comment WHERE id = ?').get(commentId) ?? null;
+}
+
+/** 댓글 삭제. 댓글 작성자 본인 또는 관리자만 지울 수 있다. */
+export function deleteComment(commentId, requestingUserId) {
+  const comment = db.prepare('SELECT * FROM Comment WHERE id = ?').get(commentId);
+  if (!comment) throw new ValidationError('댓글을 찾을 수 없습니다.');
+  if (comment.user_id !== requestingUserId && !isAdmin(requestingUserId)) {
+    throw new PermissionDeniedError('본인이 쓴 댓글만 삭제할 수 있습니다.');
+  }
+  db.prepare('DELETE FROM Comment WHERE id = ?').run(commentId);
 }
 
 function checkPostOwner(kind, postId, requestingUserId) {
@@ -376,7 +689,7 @@ function checkPostOwner(kind, postId, requestingUserId) {
 }
 
 // 분실/습득 시각은 원본 UI와 동일하게 수정 대상에서 제외한다(삭제 후 재등록 안내).
-const UPDATABLE_POST_FIELDS = new Set(['title', 'description', 'category', 'location', 'image_url', 'status']);
+const UPDATABLE_POST_FIELDS = new Set(['title', 'description', 'category', 'location', 'image_url', 'image_urls', 'status']);
 
 export function updatePost(kind, postId, requestingUserId, fields) {
   const cfg = postKindConfig(kind);
@@ -461,6 +774,7 @@ export function listMatchesByUser(userId) {
   return db.prepare(`
     SELECT
       m.id AS match_id, m.score AS score, m.created_at AS match_created_at,
+      m.lost_confirmed_at, m.found_confirmed_at, m.completed_at,
       lp.id AS lost_post_id, lp.user_id AS lost_post_user_id, lp.title AS lost_title,
       lp.category AS lost_category, lp.location AS lost_location, lp.lost_at AS lost_at,
       lp.status AS lost_status, lp.image_url AS lost_image_url, lu.nickname AS lost_user_nickname,
@@ -486,10 +800,98 @@ export function listMatchesByUser(userId) {
 export function deleteMatch(matchId, requestingUserId) {
   const match = getMatch(matchId);
   if (!match) throw new ValidationError('이미 취소된 매칭입니다.');
+  if (match.completed_at) throw new ValidationError('이미 완료된 매칭은 취소할 수 없습니다.');
   if (!matchParticipantIds(matchId).has(requestingUserId)) {
     throw new PermissionDeniedError('본인과 관련된 매칭만 취소할 수 있습니다.');
   }
   db.prepare('DELETE FROM "Match" WHERE id = ?').run(matchId);
+}
+
+// ------------------------------------------------- 명지도(신뢰도) · 되찾음 마무리
+
+export const TRUST_MIN = 0;
+export const TRUST_MAX = 100;
+export const TRUST_START = 50;
+export const TRUST_DEAL_BONUS = 0.5;   // 거래 완료 시 양쪽 +0.5%p
+export const TRUST_REPORT_PENALTY = 3; // 신고가 인용되면 -3%p
+
+/**
+ * 명지도를 delta 만큼 올리거나 내린다. 0~100 을 벗어나지 않게 잘라낸다.
+ * 호출자의 트랜잭션 안에서 실행되도록 conn 대신 db 를 그대로 쓰되,
+ * 알림까지 같이 남겨서 "왜 변했는지"를 사용자가 알 수 있게 한다.
+ * relatedType/relatedId 는 알림 중복 방지 키로도 쓰인다.
+ */
+function adjustTrust(userId, delta, title, content, relatedType, relatedId) {
+  const user = getUserById(userId);
+  if (!user) return;
+  const next = Math.min(TRUST_MAX, Math.max(TRUST_MIN, user.trust_score + delta));
+  // 소수점 오차가 쌓이지 않도록 소수 둘째 자리에서 정리한다.
+  db.prepare('UPDATE User SET trust_score = ? WHERE id = ?').run(Math.round(next * 100) / 100, userId);
+  insertNotification(userId, 'trust', title, content, relatedType, relatedId);
+}
+
+/**
+ * "돌려받았어요" -- 매칭을 끝냈다고 표시한다.
+ *
+ * 한 사람이 누르면 그쪽만 기록되고, 상대도 누르면 그때 완료 처리된다.
+ * 완료 시점에 딱 한 번:
+ *   - 양쪽 게시물이 '찾음' / '완료' 로 바뀌고
+ *   - 양쪽 명지도가 +0.5%p 오른다
+ * completed_at 이 이미 차 있으면 아무 일도 하지 않으므로, 두 번 눌러도 중복 지급되지 않는다.
+ *
+ * 반환: { completed, myConfirmed, otherConfirmed }
+ */
+export function confirmDeal(matchId, requestingUserId) {
+  const match = getMatch(matchId);
+  if (!match) throw new ValidationError('매칭을 찾을 수 없습니다.');
+  requireNotSuspended(requestingUserId);
+
+  const lostPost = getPost('lost', match.lost_post_id);
+  const foundPost = getPost('found', match.found_post_id);
+  if (!lostPost || !foundPost) throw new ValidationError('연결된 게시물이 삭제되었습니다.');
+
+  const isLostSide = lostPost.user_id === requestingUserId;
+  const isFoundSide = foundPost.user_id === requestingUserId;
+  if (!isLostSide && !isFoundSide) {
+    throw new PermissionDeniedError('본인과 관련된 매칭만 완료할 수 있습니다.');
+  }
+  if (match.completed_at) {
+    return { completed: true, myConfirmed: true, otherConfirmed: true, alreadyCompleted: true };
+  }
+
+  return db.transaction(() => {
+    // 내가 어느 쪽인지에 따라 해당 컬럼만 찍는다. 한 사람이 양쪽 글을 다 가진
+    // 경우(자기 글끼리 매칭)에는 두 컬럼이 함께 차서 바로 완료된다.
+    if (isLostSide) {
+      db.prepare(`UPDATE "Match" SET lost_confirmed_at = COALESCE(lost_confirmed_at, datetime('now')) WHERE id = ?`).run(matchId);
+    }
+    if (isFoundSide) {
+      db.prepare(`UPDATE "Match" SET found_confirmed_at = COALESCE(found_confirmed_at, datetime('now')) WHERE id = ?`).run(matchId);
+    }
+
+    const after = getMatch(matchId);
+    const bothConfirmed = Boolean(after.lost_confirmed_at && after.found_confirmed_at);
+
+    if (bothConfirmed) {
+      // WHERE completed_at IS NULL 이 "딱 한 번만"을 보장한다.
+      const info = db.prepare(`UPDATE "Match" SET completed_at = datetime('now') WHERE id = ? AND completed_at IS NULL`)
+        .run(matchId);
+      if (info.changes === 1) {
+        db.prepare(`UPDATE LostPost SET status = '찾음', updated_at = datetime('now') WHERE id = ?`).run(lostPost.id);
+        db.prepare(`UPDATE FoundPost SET status = '완료', updated_at = datetime('now') WHERE id = ?`).run(foundPost.id);
+        for (const uid of new Set([lostPost.user_id, foundPost.user_id])) {
+          adjustTrust(uid, TRUST_DEAL_BONUS, '명지도가 올랐습니다',
+            `물건을 무사히 주고받아 명지도가 ${TRUST_DEAL_BONUS}%p 올랐습니다.`, 'match', matchId);
+        }
+      }
+    }
+
+    return {
+      completed: bothConfirmed,
+      myConfirmed: true,
+      otherConfirmed: isLostSide ? Boolean(after.found_confirmed_at) : Boolean(after.lost_confirmed_at),
+    };
+  })();
 }
 
 // ---------------------------------------------------------------- Chat
@@ -591,18 +993,24 @@ export function getChatRoomView(chatRoomId, requestingUserId) {
   let otherPostLabel;
   let otherUserId = null;
   let score = null;
+  // 채팅방 상단에 띄울 "이 대화가 걸린 물건" 카드. 매칭 방이면 상대 쪽 게시물을,
+  // 다이렉트 방이면 대화의 출발점이 된 그 게시물을 보여준다.
+  let subjectPost = null;
+  let match = null;
 
   if (room.match_id !== null) {
-    const match = listMatchesByUser(requestingUserId).find((m) => m.match_id === room.match_id);
+    match = listMatchesByUser(requestingUserId).find((m) => m.match_id === room.match_id);
     if (!match) throw new ValidationError('연결된 매칭 정보를 찾을 수 없습니다.');
     if (match.lost_post_user_id === requestingUserId) {
       myPostLabel = `내 분실물: ${match.lost_title}`;
       otherPostLabel = `상대 습득물: ${match.found_title}`;
       otherUserId = match.found_post_user_id;
+      subjectPost = getPost('found', match.found_post_id);
     } else {
       myPostLabel = `내 습득물: ${match.found_title}`;
       otherPostLabel = `상대 분실물: ${match.lost_title}`;
       otherUserId = match.lost_post_user_id;
+      subjectPost = getPost('lost', match.lost_post_id);
     }
     score = match.score;
   } else {
@@ -610,6 +1018,7 @@ export function getChatRoomView(chatRoomId, requestingUserId) {
     const post = isLost
       ? getPost('lost', room.direct_lost_post_id)
       : getPost('found', room.direct_found_post_id);
+    subjectPost = post;
     otherPostLabel = post ? `${isLost ? '찾아요' : '찾았어요'} 게시물: ${post.title}` : '삭제된 게시물';
     if (room.initiator_user_id === requestingUserId) {
       myPostLabel = '직접 문의한 채팅';
@@ -621,6 +1030,8 @@ export function getChatRoomView(chatRoomId, requestingUserId) {
   }
 
   const otherUser = otherUserId ? getUserById(otherUserId) : null;
+  const amLostSide = match ? match.lost_post_user_id === requestingUserId : false;
+
   return {
     id: room.id,
     roomType: room.match_id !== null ? 'match' : 'direct',
@@ -628,8 +1039,74 @@ export function getChatRoomView(chatRoomId, requestingUserId) {
     otherPostLabel,
     otherUserId,
     otherNickname: otherUser ? otherUser.nickname : '상대방',
+    otherTrustScore: otherUser ? otherUser.trust_score : null,
     score,
+    // 상단 물건 카드용 요약. 게시물이 삭제됐으면 null.
+    subject: subjectPost ? {
+      kind: subjectPost.kind,
+      id: subjectPost.id,
+      title: subjectPost.title,
+      status: subjectPost.status,
+      image: subjectPost.images[0] ?? null,
+    } : null,
+    // 되찾음 마무리 상태 (매칭 방에서만 의미가 있다)
+    deal: match ? {
+      matchId: match.match_id,
+      completed: Boolean(match.completed_at),
+      iConfirmed: Boolean(amLostSide ? match.lost_confirmed_at : match.found_confirmed_at),
+      otherConfirmed: Boolean(amLostSide ? match.found_confirmed_at : match.lost_confirmed_at),
+    } : null,
   };
+}
+
+// ---------------------------------------------------------------- 메시지 반응
+
+export const ALLOWED_REACTIONS = ['👍', '❤️', '😂', '😮', '😢'];
+
+/**
+ * 메시지에 이모지 반응을 달거나 뗀다(같은 걸 다시 누르면 취소).
+ * 그 메시지가 속한 채팅방의 참여자만 가능하며, 권한 판단은 getChatRoom 이 한다.
+ * 반환: { added: boolean }
+ */
+export function toggleMessageReaction(messageId, requestingUserId, emoji) {
+  if (!ALLOWED_REACTIONS.includes(emoji)) throw new ValidationError('사용할 수 없는 이모지입니다.');
+  const message = getMessage(messageId);
+  if (!message) throw new ValidationError('메시지를 찾을 수 없습니다.');
+  getChatRoom(message.chat_room_id, requestingUserId); // 참여자 확인
+  requireNotSuspended(requestingUserId);
+
+  const existing = db.prepare('SELECT id FROM MessageReaction WHERE message_id = ? AND user_id = ? AND emoji = ?')
+    .get(messageId, requestingUserId, emoji);
+  if (existing) {
+    db.prepare('DELETE FROM MessageReaction WHERE id = ?').run(existing.id);
+    return { added: false };
+  }
+  db.prepare('INSERT INTO MessageReaction (message_id, user_id, emoji) VALUES (?, ?, ?)')
+    .run(messageId, requestingUserId, emoji);
+  return { added: true };
+}
+
+/**
+ * 여러 메시지의 반응을 한 번에 모아 온다(메시지당 따로 조회하지 않기 위해).
+ * 반환: Map<messageId, [{ emoji, count, mine }]>
+ */
+function fetchReactions(messageIds, requestingUserId) {
+  if (!messageIds.length) return new Map();
+  const qm = Array(messageIds.length).fill('?').join(',');
+  const rows = db.prepare(`
+    SELECT message_id, emoji, COUNT(*) AS count,
+           SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS mine
+    FROM MessageReaction
+    WHERE message_id IN (${qm})
+    GROUP BY message_id, emoji
+  `).all(requestingUserId, ...messageIds);
+
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.message_id)) map.set(r.message_id, []);
+    map.get(r.message_id).push({ emoji: r.emoji, count: r.count, mine: r.mine > 0 });
+  }
+  return map;
 }
 
 /**
@@ -652,7 +1129,8 @@ export function listMessages(chatRoomId, requestingUserId, limit = MESSAGE_PAGE_
   params.push(limit);
 
   const rows = db.prepare(`
-    SELECT m.id, m.chat_room_id, m.sender_user_id, m.content, m.created_at, m.read_at, m.hidden_at,
+    SELECT m.id, m.chat_room_id, m.sender_user_id, m.content, m.image_url,
+           m.created_at, m.read_at, m.hidden_at,
            u.nickname AS sender_nickname
     FROM Message m JOIN User u ON u.id = m.sender_user_id
     WHERE ${conditions.join(' AND ')}
@@ -660,10 +1138,16 @@ export function listMessages(chatRoomId, requestingUserId, limit = MESSAGE_PAGE_
     LIMIT ?
   `).all(...params);
 
+  // 이모지 반응은 메시지마다 따로 묻지 않고 한 번에 모아 온다.
+  const reactions = fetchReactions(rows.map((r) => r.id), requestingUserId);
+
   // DB는 최신순 -> 화면에 위에서 아래로 뿌리기 좋게 오래된순으로 뒤집는다.
   return rows.reverse().map((row) => ({
     ...row,
     content: row.hidden_at ? HIDDEN_MESSAGE_PLACEHOLDER : row.content,
+    // 숨겨진 메시지는 사진도 함께 가린다.
+    image_url: row.hidden_at ? null : row.image_url,
+    reactions: reactions.get(row.id) ?? [],
   }));
 }
 
@@ -677,11 +1161,14 @@ export function getMessage(messageId) {
  * related_id 가 chat_room_id 가 아니라 새 message id 라서, 같은 방의 서로 다른
  * 메시지가 UNIQUE 제약에 걸려 뭉개지지 않는다.
  */
-export function sendMessage(chatRoomId, requestingUserId, contentRaw) {
+export function sendMessage(chatRoomId, requestingUserId, contentRaw, imageUrl = null) {
   const room = getChatRoom(chatRoomId, requestingUserId);
   requireNotSuspended(requestingUserId);
 
-  const content = String(contentRaw ?? '').trim();
+  let content = String(contentRaw ?? '').trim();
+  // 사진만 보낼 수도 있다. 그때도 content 를 비워 두지 않는 이유는, 채팅 목록의
+  // "마지막 메시지" 미리보기가 content 를 그대로 쓰기 때문이다.
+  if (!content && imageUrl) content = '[사진]';
   if (!content) throw new ValidationError('빈 메시지는 보낼 수 없습니다.');
 
   const others = [...chatRoomParticipantIds(room)].filter((id) => id !== requestingUserId);
@@ -689,8 +1176,8 @@ export function sendMessage(chatRoomId, requestingUserId, contentRaw) {
 
   return db.transaction(() => {
     const messageId = db.prepare(
-      'INSERT INTO Message (chat_room_id, sender_user_id, content) VALUES (?, ?, ?)'
-    ).run(chatRoomId, requestingUserId, content).lastInsertRowid;
+      'INSERT INTO Message (chat_room_id, sender_user_id, content, image_url) VALUES (?, ?, ?, ?)'
+    ).run(chatRoomId, requestingUserId, content, imageUrl).lastInsertRowid;
     if (otherUserId !== null) {
       const sender = getUserById(requestingUserId);
       insertNotification(otherUserId, 'message', '새 메시지가 도착했습니다',
@@ -1076,6 +1563,8 @@ export function applyReportAction(reportId, requestingAdminUserId, {
   try {
     return db.transaction(() => {
       let expiresAt = null;
+      // 제재를 받은 당사자. 신고가 인용됐다는 뜻이므로 아래에서 명지도를 깎는다.
+      let penalizedUserId = null;
 
       if (targetType === 'post') {
         const table = targetId > 0 ? 'LostPost' : 'FoundPost';
@@ -1083,6 +1572,7 @@ export function applyReportAction(reportId, requestingAdminUserId, {
         const row = db.prepare(`SELECT id, user_id FROM ${table} WHERE id = ?`).get(realId);
         if (!row) throw new ValidationError('대상 게시물이 이미 삭제되었습니다.');
         db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(realId);
+        penalizedUserId = row.user_id;
         insertNotification(row.user_id, 'post_deleted', '게시물이 삭제되었습니다',
           '신고 접수된 게시물이 관리자 조치로 삭제되었습니다.', 'report', reportId);
       } else if (targetType === 'message') {
@@ -1092,6 +1582,7 @@ export function applyReportAction(reportId, requestingAdminUserId, {
           UPDATE Message SET hidden_at = datetime('now'), hidden_by_user_id = ?, hidden_reason = ?
           WHERE id = ?
         `).run(requestingAdminUserId, reason, targetId);
+        penalizedUserId = row.sender_user_id;
         insertNotification(row.sender_user_id, 'message_hidden', '메시지가 숨김 처리되었습니다',
           '작성하신 메시지가 관리자 조치로 숨김 처리되었습니다.', 'report', reportId);
       } else { // user
@@ -1105,6 +1596,7 @@ export function applyReportAction(reportId, requestingAdminUserId, {
         }
         db.prepare('UPDATE User SET is_suspended = 1, suspended_until = ? WHERE id = ?')
           .run(expiresAt, targetId);
+        penalizedUserId = targetId;
         insertNotification(targetId, 'user_suspended', '계정 정지 안내',
           `계정이 ${suspendDesc}`, 'report', reportId);
       }
@@ -1125,6 +1617,15 @@ export function applyReportAction(reportId, requestingAdminUserId, {
 
       insertNotification(report.reporter_user_id, 'report_processed',
         '신고 처리 결과가 등록되었습니다', '신고하신 내용이 관리자 조치로 처리되었습니다.', 'report', reportId);
+
+      // 신고가 '기각'이 아니라 실제 조치로 이어졌으므로 대상자의 명지도를 깎는다.
+      // 이 트랜잭션이 롤백되면 감점도 함께 사라지고, 신고 1건당 조치는 하나뿐이므로
+      // (ModerationAction.report_id UNIQUE) 같은 신고로 두 번 깎이지 않는다.
+      if (penalizedUserId !== null) {
+        adjustTrust(penalizedUserId, -TRUST_REPORT_PENALTY, '명지도가 내려갔습니다',
+          `신고에 대한 관리자 조치가 이루어져 명지도가 ${TRUST_REPORT_PENALTY}%p 내려갔습니다.`,
+          'report', reportId);
+      }
 
       return moderationActionId;
     })();
@@ -1168,6 +1669,23 @@ function insertNotification(userId, notificationType, titleRaw, contentRaw, rela
   }
 }
 
+/**
+ * "찾으시던 물건이 올라왔어요" 알림.
+ *
+ * related 를 습득 게시물 쪽으로 잡아서, 같은 습득물에 대해 한 사람에게는
+ * 한 번만 알림이 간다(Notification 의 UNIQUE 제약이 중복을 걸러 준다).
+ * 알림 하나가 실패해도 나머지 사람에게는 계속 가도록 예외를 삼킨다.
+ */
+export function createAutoMatchNotification(userId, foundPost, lostPost) {
+  try {
+    insertNotification(userId, 'match', '찾으시던 물건이 올라왔어요',
+      `'${lostPost.title}'와(과) 비슷한 습득물 '${foundPost.title}'이(가) 등록되었습니다.`,
+      'found_post', foundPost.id);
+  } catch (e) {
+    console.error('[automatch] 알림 생성 실패', e);
+  }
+}
+
 export function getNotification(notificationId) {
   return db.prepare('SELECT * FROM Notification WHERE id = ?').get(notificationId) ?? null;
 }
@@ -1199,4 +1717,47 @@ export function markNotificationAsRead(notificationId, requestingUserId) {
 export function markAllNotificationsAsRead(requestingUserId) {
   return db.prepare('UPDATE Notification SET is_read = 1 WHERE user_id = ? AND is_read = 0')
     .run(requestingUserId).changes;
+}
+
+// ---------------------------------------------------------------- 관리자 통계
+
+/**
+ * 관리자 대시보드용 숫자 묶음. 전부 COUNT 라서 가볍다.
+ * 관리자 확인은 여기서도 다시 한다(라우터를 믿지 않는다).
+ */
+export function getAdminStats(requestingAdminUserId) {
+  requireAdmin(requestingAdminUserId);
+  const count = (sql, ...params) => db.prepare(sql).get(...params).c;
+
+  return {
+    users: {
+      total: count('SELECT COUNT(*) c FROM User'),
+      withNickname: count('SELECT COUNT(*) c FROM User WHERE nickname IS NOT NULL'),
+      admins: count('SELECT COUNT(*) c FROM User WHERE is_admin = 1'),
+      suspended: count('SELECT COUNT(*) c FROM User WHERE is_suspended = 1'),
+      newToday: count("SELECT COUNT(*) c FROM User WHERE created_at >= date('now')"),
+    },
+    posts: {
+      lost: count('SELECT COUNT(*) c FROM LostPost'),
+      lostOpen: count("SELECT COUNT(*) c FROM LostPost WHERE status = '찾는 중'"),
+      found: count('SELECT COUNT(*) c FROM FoundPost'),
+      foundOpen: count("SELECT COUNT(*) c FROM FoundPost WHERE status = '보관 중'"),
+      newToday: count("SELECT COUNT(*) c FROM LostPost WHERE created_at >= date('now')")
+        + count("SELECT COUNT(*) c FROM FoundPost WHERE created_at >= date('now')"),
+    },
+    matches: {
+      total: count('SELECT COUNT(*) c FROM "Match"'),
+      completed: count('SELECT COUNT(*) c FROM "Match" WHERE completed_at IS NOT NULL'),
+    },
+    chats: {
+      rooms: count('SELECT COUNT(*) c FROM ChatRoom'),
+      messages: count('SELECT COUNT(*) c FROM Message'),
+    },
+    reports: {
+      pending: count("SELECT COUNT(*) c FROM Report WHERE status = 'pending'"),
+      actioned: count("SELECT COUNT(*) c FROM Report WHERE status = 'actioned'"),
+      dismissed: count("SELECT COUNT(*) c FROM Report WHERE status = 'dismissed'"),
+    },
+    comments: count('SELECT COUNT(*) c FROM Comment'),
+  };
 }

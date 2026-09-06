@@ -7,11 +7,40 @@
 import express from 'express';
 
 import * as db from '../db.js';
+import * as ai from '../ai.js';
 import * as auth from '../auth.js';
 import { filterValue, intOrNull, requireKind, wrap } from '../helpers.js';
-import { imageUrlFor, upload } from '../upload.js';
+import { imageUrlsFor, upload } from '../upload.js';
 
 const router = express.Router();
+
+// 새 습득물이 이 점수 이상으로 맞아떨어질 때만 알린다. 낮추면 알림이 시끄러워지고
+// 높이면 놓치므로, 사람이 봤을 때 "관련 있네" 싶은 지점으로 잡았다.
+const AUTO_MATCH_MIN_SCORE = 0.35;
+const AUTO_MATCH_MAX_NOTIFY = 5;
+
+/**
+ * 새 습득물이 올라왔을 때, 아직 물건을 못 찾은 사람들 중 내용이 잘 맞는
+ * 사람에게만 "찾으시던 물건이 올라왔어요" 알림을 보낸다.
+ *
+ * 게시물 등록 응답을 붙잡아 두지 않으려고 등록이 끝난 뒤 따로 돌린다.
+ * 여기서 실패해도 게시물은 이미 저장돼 있다.
+ */
+async function notifyMatchingLosers(foundPostId) {
+  const foundPost = db.getPost('found', foundPostId);
+  if (!foundPost) return;
+
+  // 아직 찾는 중인 분실 글만 후보로 본다. 이미 찾은 사람에게는 알릴 이유가 없다.
+  const openLostPosts = db.searchPosts('lost', { status: '찾는 중' })
+    .filter((p) => p.user_id !== foundPost.user_id);
+  if (!openLostPosts.length) return;
+
+  const ranked = await ai.rankSimilarPosts(foundPost, openLostPosts, AUTO_MATCH_MAX_NOTIFY);
+  for (const { post, score } of ranked) {
+    if (score < AUTO_MATCH_MIN_SCORE) continue;
+    db.createAutoMatchNotification(post.user_id, foundPost, post);
+  }
+}
 
 /** 목록 + 검색 ("키워드 검색" 탭). 필터를 다 비우면 전체 목록이 된다. */
 router.get('/posts/:kind', wrap(async (req, res) => {
@@ -24,18 +53,31 @@ router.get('/posts/:kind', wrap(async (req, res) => {
   }));
 }));
 
+/**
+ * 게시물 상세. 여는 김에 조회수도 올린다(1인 1회, 작성자 제외).
+ * 조회수 증가가 실패해도 본문은 정상적으로 보여준다 -- 글을 읽는 게 본질이고
+ * 카운트는 부수적인 정보라서, 이것 때문에 상세 페이지가 통째로 막히면 안 된다.
+ */
 router.get('/posts/:kind/:id', wrap(async (req, res) => {
   const kind = requireKind(req);
-  if (!auth.requireReadyUser(req, res)) return;
-  const post = db.getPost(kind, intOrNull(req.params.id));
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  const postId = intOrNull(req.params.id);
+  const post = db.getPost(kind, postId);
   if (!post) {
     res.status(404).json({ error: '선택한 게시물을 찾을 수 없습니다.' });
     return;
   }
-  res.json(post);
+  let viewCount = post.view_count;
+  try {
+    viewCount = db.bumpViewCount(kind, postId, user.id);
+  } catch (e) {
+    console.error('[views]', e);
+  }
+  res.json({ ...post, view_count: viewCount });
 }));
 
-router.post('/posts/:kind', upload.single('image'), wrap(async (req, res) => {
+router.post('/posts/:kind', upload.array('images', db.MAX_POST_IMAGES), wrap(async (req, res) => {
   const kind = requireKind(req);
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
@@ -56,12 +98,19 @@ router.post('/posts/:kind', upload.single('image'), wrap(async (req, res) => {
     category,
     location: location.trim(),
     at,
-    imageUrl: imageUrlFor(req.file),
+    imageUrls: imageUrlsFor(req.files),
   });
+
+  // 습득물이 새로 올라오면, 아직 물건을 못 찾은 사람들 중 이 글과 잘 맞는
+  // 사람에게만 알린다. 알림 실패가 등록 자체를 되돌리면 안 되므로 따로 감싼다.
+  if (kind === 'found') {
+    notifyMatchingLosers(id).catch((e) => console.error('[automatch]', e));
+  }
+
   res.status(201).json({ id });
 }));
 
-router.patch('/posts/:kind/:id', upload.single('image'), wrap(async (req, res) => {
+router.patch('/posts/:kind/:id', upload.array('images', db.MAX_POST_IMAGES), wrap(async (req, res) => {
   const kind = requireKind(req);
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
@@ -78,10 +127,37 @@ router.patch('/posts/:kind/:id', upload.single('image'), wrap(async (req, res) =
     if (!db.CATEGORIES.includes(req.body.category)) throw new db.ValidationError('카테고리를 선택해주세요.');
     fields.category = req.body.category;
   }
-  // 이미지를 새로 올렸을 때만 교체한다 (비워두면 기존 이미지 유지 -- 원본과 동일).
-  if (req.file) fields.image_url = imageUrlFor(req.file);
+  // 사진을 새로 올렸을 때만 통째로 교체한다 (안 올리면 기존 사진 유지 -- 원본과 동일).
+  const newImages = imageUrlsFor(req.files);
+  if (newImages.length) {
+    fields.image_url = newImages[0];
+    fields.image_urls = JSON.stringify(newImages);
+  }
 
   db.updatePost(kind, intOrNull(req.params.id), user.id, fields);
+  res.json({ ok: true });
+}));
+
+// ---------------------------------------------------------------- 댓글
+
+router.get('/posts/:kind/:id/comments', wrap(async (req, res) => {
+  const kind = requireKind(req);
+  if (!auth.requireReadyUser(req, res)) return;
+  res.json(db.listComments(kind, intOrNull(req.params.id)));
+}));
+
+router.post('/posts/:kind/:id/comments', wrap(async (req, res) => {
+  const kind = requireKind(req);
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  const id = db.createComment(kind, intOrNull(req.params.id), user.id, req.body?.content);
+  res.status(201).json({ id });
+}));
+
+router.delete('/comments/:id', wrap(async (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  db.deleteComment(intOrNull(req.params.id), user.id);
   res.json({ ok: true });
 }));
 

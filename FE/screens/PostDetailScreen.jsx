@@ -8,6 +8,9 @@ import Loading from '../components/Loading.jsx';
 import StatusPill from '../components/StatusPill.jsx';
 import ReportButton from '../components/ReportButton.jsx';
 import MatchCandidates from '../components/MatchCandidates.jsx';
+import ImageGallery from '../components/ImageGallery.jsx';
+import CommentSection from '../components/CommentSection.jsx';
+import TrustScore from '../components/TrustScore.jsx';
 
 /**
  * 게시물 상세 (/lost/:id, /found/:id).
@@ -76,19 +79,26 @@ export default function PostDetailScreen({ kind, id, me }) {
           <span className="tag accent">{meta.title}</span>
           <span className="sep">·</span>
           <StatusPill status={postData.status} />
+          <span className="sep">·</span>
+          <span className="faint">조회 {postData.view_count ?? 0}</span>
         </p>
       </div>
 
       <Banner kind="error" onClose={() => setError('')}>{error}</Banner>
       <Banner kind="success" onClose={() => setNotice('')}>{notice}</Banner>
 
-      {postData.image_url && <img className="detail-image" src={postData.image_url} alt="" />}
+      <ImageGallery images={postData.images} />
       <p className="desc" style={{ marginTop: 0, fontSize: '15.5px' }}>{postData.description}</p>
 
       <div className="section">
         <h3>상세 정보</h3>
         <dl className="spec">
-          <dt>작성자</dt><dd>{postData.author_nickname}</dd>
+          <dt>작성자</dt>
+          <dd>
+            {postData.author_nickname}
+            <span className="sep">·</span>
+            <TrustScore score={postData.author_trust_score} />
+          </dd>
           <dt>카테고리</dt><dd>{postData.category}</dd>
           <dt>장소</dt><dd>{postData.location}</dd>
           <dt>{meta.dateLabel} 시간</dt><dd>{postData[meta.dateField]}</dd>
@@ -108,6 +118,8 @@ export default function PostDetailScreen({ kind, id, me }) {
           {isMine && <span className="muted">내가 쓴 글입니다. 수정·삭제는 &lsquo;내 게시물&rsquo;에서 할 수 있어요.</span>}
         </div>
       </div>
+
+      <CommentSection kind={kind} postId={postData.id} me={me} />
 
       <div className="section">
         <h3>AI 매칭</h3>

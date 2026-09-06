@@ -45,6 +45,19 @@ router.post('/notifications/:id/read', wrap(async (req, res) => {
     res.json({ navigate: '/matches' });
     return;
   }
+  // "찾으시던 물건이 올라왔어요" -- 아직 매칭이 아니라 습득 게시물을 가리킨다.
+  if (n?.type === 'match' && n.related_type === 'found_post' && n.related_id) {
+    res.json({ navigate: `/found/${n.related_id}` });
+    return;
+  }
+  // 댓글 알림은 그 댓글이 달린 게시물로 보낸다.
+  if (n?.type === 'comment' && n.related_type === 'comment' && n.related_id) {
+    const target = db.getCommentTarget(n.related_id);
+    res.json(target
+      ? { navigate: `/${target.post_kind}/${target.post_id}` }
+      : { navigate: null, warning: '관련 게시물을 찾을 수 없습니다. (삭제되었을 수 있어요)' });
+    return;
+  }
   // report_processed / post_deleted / message_hidden / user_suspended:
   // 이동할 전용 화면이 없으므로 읽음 처리만 하고 알림 목록에 남는다.
   res.json({ navigate: null });

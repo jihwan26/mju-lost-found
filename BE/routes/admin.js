@@ -13,6 +13,13 @@ import { filterValue, intOrNull, wrap } from '../helpers.js';
 
 const router = express.Router();
 
+/** 관리자 대시보드 지표. 전부 COUNT 라 가볍다. */
+router.get('/admin/stats', wrap(async (req, res) => {
+  const admin = auth.requireAdminUser(req, res);
+  if (!admin) return;
+  res.json(db.getAdminStats(admin.id));
+}));
+
 router.get('/admin/reports', wrap(async (req, res) => {
   const admin = auth.requireAdminUser(req, res);
   if (!admin) return;

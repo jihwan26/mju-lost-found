@@ -19,7 +19,7 @@ export default function MatchCandidates({ kind, results, sourcePostId, onMatched
     <div className="list">
       {results.map(({ post: p, score }) => (
         <div className="list-item" key={`${kind}-${p.id}`}>
-          <Thumb src={p.image_url} />
+          <Thumb src={p.images?.[0]} count={p.images?.length} />
           <div className="list-body">
             <p className="item-title">
               <span className="tag accent" style={{ marginRight: 7 }}>{boardLabel}</span>

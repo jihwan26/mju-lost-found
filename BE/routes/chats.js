@@ -10,6 +10,7 @@ import express from 'express';
 import * as db from '../db.js';
 import * as auth from '../auth.js';
 import { intOrNull, wrap } from '../helpers.js';
+import { imageUrlFor, upload } from '../upload.js';
 
 const router = express.Router();
 
@@ -58,11 +59,25 @@ router.get('/chats/:id/messages', wrap(async (req, res) => {
   res.json({ messages, hasMore });
 }));
 
-router.post('/chats/:id/messages', wrap(async (req, res) => {
+/**
+ * 메시지 전송. 글만, 사진만, 둘 다 — 세 경우 모두 이 경로 하나로 받는다.
+ * 사진을 보낼 때는 multipart 로 오고, 글만 보낼 때는 JSON 으로 온다
+ * (multer 는 multipart 가 아니면 그냥 통과시키므로 둘 다 처리된다).
+ */
+router.post('/chats/:id/messages', upload.single('image'), wrap(async (req, res) => {
   const user = auth.requireReadyUser(req, res);
   if (!user) return;
-  const message = db.sendMessage(intOrNull(req.params.id), user.id, req.body?.content);
+  const message = db.sendMessage(
+    intOrNull(req.params.id), user.id, req.body?.content, imageUrlFor(req.file)
+  );
   res.status(201).json(message);
+}));
+
+/** 메시지 이모지 반응 토글. 같은 이모지를 다시 누르면 취소된다. */
+router.post('/messages/:id/reactions', wrap(async (req, res) => {
+  const user = auth.requireReadyUser(req, res);
+  if (!user) return;
+  res.json(db.toggleMessageReaction(intOrNull(req.params.id), user.id, req.body?.emoji));
 }));
 
 /**

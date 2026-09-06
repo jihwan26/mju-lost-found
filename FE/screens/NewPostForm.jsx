@@ -15,7 +15,7 @@ export default function NewPostForm({ kind, me, onCreated }) {
     title: '', description: '', category: me.categories[0], location: '',
     date: todayISO(), time: nowHM(),
   });
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +33,8 @@ export default function NewPostForm({ kind, me, onCreated }) {
       fd.append('location', form.location);
       // 서버의 날짜 검증 형식("YYYY-MM-DD HH:MM")에 맞춰 두 입력을 합친다.
       fd.append('at', `${form.date} ${form.time}`);
-      if (file) fd.append('image', file);
+      // 서버가 upload.array('images') 로 받으므로 같은 이름으로 여러 번 붙인다.
+      for (const f of files) fd.append('images', f);
       const { id } = await sendForm(`/api/posts/${kind}`, 'POST', fd);
       onCreated(id);
     } catch (err) {
@@ -81,8 +82,14 @@ export default function NewPostForm({ kind, me, onCreated }) {
         </div>
       </div>
       <div className="field">
-        <label>이미지 (선택 · jpg/jpeg/png, 5MB 이하)</label>
-        <input type="file" accept=".jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files[0] || null)} />
+        <label>사진 (선택 · 최대 {me.maxPostImages}장 · jpg/jpeg/png, 각 5MB 이하)</label>
+        <input
+          type="file"
+          accept=".jpg,.jpeg,.png"
+          multiple
+          onChange={(e) => setFiles([...e.target.files].slice(0, me.maxPostImages))}
+        />
+        {files.length > 0 && <p className="faint">{files.length}장 선택됨</p>}
       </div>
 
       <button className="primary" type="submit" disabled={busy}>
